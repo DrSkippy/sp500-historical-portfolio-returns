@@ -132,7 +132,7 @@ class KellyModel(Model):
         logger.info("Model initialized, but not configured")
 
     def model_config(self, start_date, years=1):
-        self.model_name += f"_{self.init_bond_frac:.2}_{self.init_rebalance_period_days}"
+        self.model_name = f"Fractional_Kelly_{self.init_bond_frac:.2}_{self.init_rebalance_period_days}"
         self.capital = self.init_capital
         self.shares = 0
         self.trades = []  # list of tuples (date, price, shares)
@@ -210,7 +210,7 @@ class InsuranceModel(KellyModel):
         logger.info("Model initialized, but not configured")
 
     def model_config(self, start_date, years=1):
-        self.model_name += f"_{self.init_insurance_frac:.2}_{self.init_insurance_deductible:.2}_{self.init_insurance_period}"
+        self.model_name = f"Insurance_{self.init_insurance_frac:.2}_{self.init_insurance_deductible:.2}_{self.init_insurance_period}"
         self.capital = self.init_capital
         self.shares = 0
         self.trades = []  # list of tuples (date, price, shares)

@@ -1,0 +1,13 @@
+test_agent:
+  ollama_base_url: "http://192.168.1.90:11434"
+  model: "phi4:latest"
+  pytest_command:
+    - poetry
+    - run
+    - pytest
+    - "--cov=returns"
+    - "--cov-report=term-missing"
+    - "tests/"
+    - "-v"
+  # Maximum characters of pytest output to send to the LLM (keeps prompt size sane)
+  max_context_chars: 8000

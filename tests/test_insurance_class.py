@@ -62,10 +62,18 @@ class TestInsuranceModel(unittest.TestCase):
         self.assertListEqual(self.insurance_model.last_price, [84])
 
     def test_daily_trade_without_insurance_payout(self):
-        # Simulate a scenario where insurance payout is not triggered
-        # Example: self.insurance_model.daily_trade(date, price)
-        # Add assertions to check the behavior of daily_trade without insurance payout
-        pass
+        self.insurance_model.shares = 900
+        self.insurance_model.capital = 10000
+        self.insurance_model.last_rebalance = datetime.datetime(2020, 1, 1)
+        self.insurance_model.last_price = [100, 100, 100, 100, 100, 100]
+        date = datetime.datetime(2020, 1, 4)  # 3 days < 90-day rebalance period
+        price = [99, -0.005]                  # 1% loss, below 15% deductible
+        self.insurance_model.daily_trade(date, price)
+        self.assertEqual(self.insurance_model.shares, 900)
+        self.assertEqual(self.insurance_model.capital, 10000)
+        self.assertEqual(len(self.insurance_model.trades), 0)
+        self.assertEqual(self.insurance_model.last_rebalance, datetime.datetime(2020, 1, 1))
+        self.assertListEqual(self.insurance_model.last_price, [100, 100, 100, 100, 100, 99])
 
 
 if __name__ == '__main__':

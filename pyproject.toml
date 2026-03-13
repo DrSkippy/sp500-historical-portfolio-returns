@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "iSP500_Historical_Portfolio_Returns"}]
 
 [tool.poetry.dependencies]
-python = "3.10.13"
+python = "^3.12.0"
 numpy = "^1.26.0"
 pandas = "^2.1.1"
 matplotlib = "^3.8.0"
@@ -15,8 +15,16 @@ notebook = "^7.0.4"
 jupyter = "^1.0.0"
 seaborn = "^0.13.0"
 pytest = "^7.4.3"
+requests = "^2.32.5"
+pydantic = "^2.12.5"
+pyyaml = "^6.0.3"
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest-cov (>=7.0.0,<8.0.0)"
+]

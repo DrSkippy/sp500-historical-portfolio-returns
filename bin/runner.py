@@ -1,5 +1,5 @@
+import bisect
 import multiprocessing as mp
-from itertools import repeat
 
 from returns.data import *
 from returns.models import *
@@ -24,11 +24,15 @@ def model_tester(model, data, years=10):
 
     logging.info("Starting model testing")
 
+    # Pre-compute date list once for bisect lookups
+    dates = [d[0] for d in data]
+
     while test_start_date + datetime.timedelta(days=365 * years) < data[-1][0]:
         model.model_config(test_start_date, years=years)
 
-        skip_to_date = test_start_date - PADDING_TIME_DELTA
-        for d in data:
+        start_idx = bisect.bisect_left(dates, test_start_date - PADDING_TIME_DELTA)
+        skip_to_date = None
+        for d in data[start_idx:]:
             if skip_to_date is not None and d[0] < skip_to_date:
                 continue
             else:
@@ -48,61 +52,41 @@ def model_tester(model, data, years=10):
     return model_returns
 
 
-def model_generator_kelly():
-    """
-    Generates models for testing.
-    """
+def all_model_specs():
+    """Yields (class_name, kwargs) for every model variant."""
+    yield ("Model", {})
     for i in [0.1, 0.2, 0.25, 0.15]:
         for j in [90, 180]:
-            logging.info(f"Testing KellyModel with bond_fract={i}, rebalance_period={j}")
-            yield KellyModel(bond_fract=i, rebalance_period=j)
-
-
-def model_generator_bnh():
-    """
-    Generates models for testing.
-    """
-    logging.info(f"Testing Buy and Hold Model")
-    yield Model()
-
-
-def model_generator_insurance():
-    """
-    Generates models for testing.
-    """
+            yield ("KellyModel", {"bond_fract": i, "rebalance_period": j})
     for i in [0.05, 0.1]:
         for j in [0.09, 0.12, 0.18]:
-            logging.info(f"Testing InsuranceModel with insurance_fract={i}, insurance_deductible={j}")
-            yield InsuranceModel(insurance_frac=i, insurance_deductible=j)
+            yield ("InsuranceModel", {"insurance_frac": i, "insurance_deductible": j})
 
 
-def model_test_manager(years, date_str):
-    """
-    Manages the testing of models for the specified years.
-    """
-    logging.info(f"Testing models for {years} years")
+def model_test_worker(years: int, class_name: str, model_kwargs: dict, date_str: str) -> None:
+    """Worker that runs one (years, model) combination and writes results to CSV."""
     d, h = get_combined_sp500_interest_data()
+    model_classes = {"Model": Model, "KellyModel": KellyModel, "InsuranceModel": InsuranceModel}
+    m = model_classes[class_name](**model_kwargs)
+    rets = model_tester(m, d, years=years)
 
-    for m in model_generator_insurance():
-        rets = model_tester(m, d, years=years)
+    fn = f"{path}returns_{years}_{rets[0][-1]}_{date_str}.csv"
+    logging.info(f"Writing results to {fn}")
 
-        fn = f"{path}returns_{years}_{rets[0][-1]}_{date_str}.csv"
-        logging.info(f"Writing results to {fn}")
-
-        with open(fn, "w") as outfile:
-            writer = csv.writer(outfile)
-            writer.writerow(["date",
-                             "frac_return",
-                             "yearly_return_rate",
-                             "time_span",
-                             "model_name"])
-            for r in rets:
-                writer.writerow(r)
+    with open(fn, "w") as outfile:
+        writer = csv.writer(outfile)
+        writer.writerow(["date", "frac_return", "yearly_return_rate", "time_span", "model_name"])
+        for r in rets:
+            writer.writerow(r)
 
 
 if __name__ == '__main__':
     date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
-    p = mp.Pool()
-    args = zip(range(1, 16), repeat(date_str))
-    p.starmap(model_test_manager, args)
-    logger.info("################ All model testing completed ################")
+    tasks = [
+        (years, class_name, kwargs, date_str)
+        for years in range(1, 16)
+        for class_name, kwargs in all_model_specs()
+    ]
+    with mp.Pool() as p:
+        p.starmap(model_test_worker, tasks)
+    logging.info("All model testing completed")

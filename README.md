@@ -1,295 +1,206 @@
 # S&P 500 Historical Portfolio Returns
 
-A backtesting framework for analyzing historical S&P 500 portfolio returns using different investment strategies. This project simulates buying stocks on various historical start dates for different holding periods (1-15 years) to evaluate and compare portfolio management strategies.
+A backtesting framework that tests three portfolio strategies across the full S&P 500 daily
+price history (August 1956 – March 2026, ~17,500 trading days). Strategies are run across
+every 3-day-strided start date for holding periods of 1–15 years, producing statistical
+distributions of returns rather than point estimates.
 
-## Overview
+## Strategies
 
-The project implements and compares three portfolio management strategies:
+| Strategy | Description |
+|---|---|
+| **Buy & Hold** | Buy at open, hold to end date, sell |
+| **Fractional Kelly** | Periodic stock/bond rebalancing at a fixed allocation |
+| **Insurance** | Kelly variant with loss-triggered insurance payouts |
 
-- **Buy & Hold**: Simple long-only strategy that buys at the start and holds until the end
-- **Fractional Kelly**: Dynamic rebalancing strategy that maintains a fixed stock-to-bond allocation with periodic rebalancing
-- **Insurance Model**: Enhanced Kelly strategy with downside protection via loss-based insurance payouts
+### Grid search parameters
 
-## Features
-
-- **Historical Backtesting**: Tests strategies across 2,500+ different start dates (from May 2005 to September 2023)
-- **Multiple Holding Periods**: Analyzes returns for 1-15 year investment horizons
-- **Grid Search Optimization**: Tests multiple parameter configurations for each strategy
-- **Parallel Processing**: Uses multiprocessing for efficient backtesting
-- **Statistical Analysis**: Computes mean, median, standard deviation, and mode of returns
-- **Visualization**: Generates comparison plots and histograms
-- **Rolling Returns Analysis**: Calculates 30-day rolling returns for market analysis
+- **Kelly**: `bond_frac` ∈ {0.10, 0.15, 0.20, 0.25} × `rebalance_period` ∈ {90, 180} days → 8 variants
+- **Insurance**: `insurance_frac` ∈ {0.05, 0.10} × `deductible` ∈ {0.09, 0.12, 0.18} → 6 variants
+- **Total**: 15 model variants × 15 holding periods = **225 parallel backtest tasks**
 
 ## Installation
 
-### Prerequisites
+**Requirements**: Python 3.12+, [Poetry](https://python-poetry.org/)
 
-- Python 3.10+
-- Poetry (for dependency management)
-
-### Setup
-
-1. Clone the repository:
 ```bash
 git clone <repository-url>
 cd sp500-historical-portfolio-returns
-```
-
-2. Install dependencies using Poetry:
-```bash
 poetry install
-```
-
-3. Activate the virtual environment:
-```bash
-poetry shell
-```
-
-Alternatively, install dependencies using pip:
-```bash
-pip install pandas numpy matplotlib seaborn jupyter pytest
 ```
 
 ## Usage
 
-### 1. Run Full Grid Search Backtest
+All commands use `poetry run` — never invoke `python` directly.
 
-Execute the main backtesting script to run all strategies across all time periods:
-
-```bash
-python bin/runner.py
-```
-
-This will:
-- Test 13-15 different model configurations (Buy & Hold + multiple Kelly/Insurance variants)
-- Test 15 different holding periods (1-15 years)
-- Run backtests across all available start dates
-- Generate CSV files in `./out_data/` for each model and time period
-- Log execution details to `app1.log`
-
-**Note**: This process takes 15+ minutes depending on your system.
-
-### 2. Generate Summary Statistics
-
-After running the backtests, create aggregated summary files:
+### Run the full backtest
 
 ```bash
-python bin/summarize.py
+poetry run python bin/runner.py
 ```
 
-This will:
-- Aggregate all run results into summary statistics
-- Generate `./out_data/summary_{suffix}.csv` (stats per year)
-- Generate `./out_data/total_returns_{suffix}.json` (full distribution data)
-- Create a combined data CSV file
+Dispatches 225 tasks via `multiprocessing.Pool`, one per (years, model) combination.
+Each worker loads data independently and writes a CSV to `./out_data/`. Logs go to `app1.log`.
+Runtime is typically 15–30 minutes depending on core count.
 
-### 3. Analyze 30-Day Rolling Returns (Optional)
+### Generate summary statistics
 
-Compute and visualize rolling monthly returns:
+Run after the backtest to aggregate results:
 
 ```bash
-python bin/get_monthly_returns.py
+poetry run python bin/summarize.py
 ```
 
-This will:
-- Calculate 30-day rolling returns
-- Display summary statistics
-- Show a histogram plot
-- Export results to `./out_data/monthly_returns.csv`
+Produces per-model summary CSVs and JSON files in `./out_data/`.
 
-### 4. Interactive Analysis
-
-Use Jupyter notebooks for exploratory analysis:
+### Run tests
 
 ```bash
-jupyter notebook notebooks/scratch.ipynb
+poetry run pytest --cov=returns --cov-report=term-missing tests/
 ```
 
-## Project Structure
+43 tests, ~72% coverage. Or use the Ollama-powered test agent (see below).
+
+### Compute 30-day rolling returns
+
+```bash
+poetry run python bin/get_monthly_returns.py
+```
+
+Calculates `(current - prior) / current` over a 30-day offset across the full price history.
+
+### Update SP500 data
+
+```bash
+poetry run python bin/transform_new_sp500_records.py
+```
+
+Transforms newly downloaded SP500 records into the `.tab` format used by the data loader.
+
+## Test agent (Ollama-powered)
+
+`bin/test_agent.py` runs pytest and, on any failure, queries a local Ollama LLM for a
+structured analysis of root causes and suggested fixes.
+
+```bash
+# Run tests + Ollama analysis on failure
+poetry run python bin/test_agent.py
+
+# Use a lighter model
+poetry run python bin/test_agent.py --model gemma3:latest
+
+# Target specific tests
+poetry run python bin/test_agent.py --pytest-args "-k test_data"
+
+# Just pytest, skip LLM
+poetry run python bin/test_agent.py --no-analysis
+```
+
+The agent is also available as a Claude Code subagent (`.claude/agents/test-runner.md`) and
+can be invoked by Claude automatically when asked to run or investigate tests.
+
+Configuration is in `config.yaml`:
+
+```yaml
+test_agent:
+  ollama_base_url: "http://192.168.1.90:11434"
+  model: "phi4:latest"
+  max_context_chars: 8000
+```
+
+## Project structure
 
 ```
 sp500-historical-portfolio-returns/
-├── returns/                    # Core package
-│   ├── models.py              # Trading strategies (Model, KellyModel, InsuranceModel)
-│   ├── data.py                # Data loading and aggregation
-│   ├── analysis.py            # Statistical analysis and plotting
-│   └── monthly_returns.py     # 30-day rolling returns
-├── bin/                       # Executable scripts
-│   ├── runner.py              # Main grid search backtest
-│   ├── summarize.py           # Post-process results
-│   └── get_monthly_returns.py # Monthly returns analysis
-├── tests/                     # Unit tests
+├── returns/
+│   ├── models.py              # Model, KellyModel, InsuranceModel
+│   ├── data.py                # Data loading and combination
+│   ├── analysis.py            # Aggregation, statistics, plotting
+│   └── monthly_returns.py     # 30-day rolling return series
+├── bin/
+│   ├── runner.py              # Main backtest entry point
+│   ├── summarize.py           # Post-process backtest output
+│   ├── get_monthly_returns.py # Rolling returns analysis
+│   ├── transform_new_sp500_records.py  # Data ingestion helper
+│   └── test_agent.py          # Ollama-powered test runner
+├── tests/
 │   ├── test_model_class.py
 │   ├── test_kelly_model_class.py
-│   └── test_insurance_class.py
-├── data/                      # Input data
-│   ├── SP500.tab             # S&P 500 historical prices
-│   └── interest.tab          # Interest rate data
-├── out_data/                  # Output directory (generated)
-├── notebooks/                 # Jupyter notebooks
-├── pyproject.toml            # Poetry project configuration
-└── README.md                 # This file
+│   ├── test_insurance_class.py
+│   ├── test_analysis.py
+│   ├── test_data.py
+│   └── test_monthly_returns.py
+├── data/
+│   ├── SP500.tab              # Daily OHLCV + Adj Close (Aug 1956 – Mar 2026)
+│   └── interest.tab           # Annual interest rates (bond return proxy)
+├── out_data/                  # Backtest output (generated, not committed)
+├── notebooks/                 # Exploratory Jupyter notebooks
+├── .claude/agents/
+│   └── test-runner.md         # Claude Code subagent definition
+├── config.yaml                # Test agent and Ollama settings
+└── pyproject.toml
 ```
 
-## Data Files
+## Data
 
-### Input Data
+**`data/SP500.tab`** — tab-separated daily prices, ~17,500 rows
+- Columns: `Date`, `Open`, `High`, `Low`, `Close*`, `Adj Close**`, `Volume`
+- Dates in `"%b %d, %Y"` format; numbers may contain locale-formatted commas
 
-- **SP500.tab**: Tab-separated S&P 500 historical price data (May 2005 - September 2023)
-  - Columns: Date, Open, High, Low, Close, Adj Close, Volume
+**`data/interest.tab`** — annual interest rates, one row per year
+- Used as the bond/cash return proxy in Kelly and Insurance models
 
-- **interest.tab**: Annual interest rate data used as bond return proxy
-  - Columns: Year, Average Yield, Year Open, Year High, Year Low, Year Close, Annual % Change
+**Output files** (written to `./out_data/` by the backtest runner):
+- `returns_{years}_{model_name}_{timestamp}.csv` — per-start-date results
+- `summary_{suffix}.csv` — aggregated stats (mean, median, stdev, mode, fraction losing)
+- `total_returns_{suffix}.json` — full return distribution for histogram plots
 
-### Output Data
+## Strategy details
 
-Results are saved to `./out_data/`:
-- `returns_{years}_{model_name}_{timestamp}.csv`: Individual backtest results
-- `summary_{suffix}.csv`: Aggregated statistics by time period
-- `total_returns_{suffix}.json`: Full distribution data
-- `monthly_returns.csv`: 30-day rolling returns
+### Buy & Hold
 
-## Strategy Details
+Buys all available capital in S&P 500 shares at the first data point inside the window,
+holds, then sells at the end. Baseline for comparison.
 
-### Buy & Hold Model
+### Fractional Kelly (`KellyModel`)
 
-Simple strategy that:
-- Buys stocks at the start date
-- Holds until the end date
-- Sells and calculates returns
+Maintains a target `stock_frac = 1 - bond_frac` allocation. Every `rebalance_period` days
+it rebalances back to target, applying daily compounding interest to the cash/bond position.
 
-### Kelly Model
+### Insurance (`InsuranceModel`)
 
-Dynamic rebalancing strategy that:
-- Maintains a target stock-to-bond allocation (e.g., 60% stocks / 40% bonds)
-- Rebalances periodically (every 90 or 180 days)
-- Applies daily interest compounding to cash/bond positions
-- Tracks rebalance history
+Extends Kelly with a rolling 6-day price window. If the price drops more than
+`insurance_deductible` (e.g., 15%) over that window, an insurance payout fires:
 
-**Parameters tested**:
-- `bond_frac`: [0.1, 0.15, 0.2, 0.25]
-- `rebalance_period`: [90, 180] days
-
-### Insurance Model
-
-Enhanced Kelly strategy with downside protection:
-- Extends Kelly model with loss insurance
-- Monitors 6-day price history
-- Triggers payout when loss exceeds deductible (e.g., 15% drop)
-- Insurance payout: `loss_fraction × insurance_payout_factor × capital`
-- Rebalances after payout
-
-**Parameters tested**:
-- `insurance_frac`: [0.05, 0.1]
-- `deductible`: [0.09, 0.12, 0.18]
-- Inherits Kelly parameters
-
-## Code Examples
-
-### Single Model Test
-
-```python
-from returns.models import KellyModel
-from returns.data import get_combined_sp500_interest_data
-import datetime
-
-# Create model
-model = KellyModel(bond_fract=0.4, rebalance_period=90)
-
-# Load data
-data, header = get_combined_sp500_interest_data()
-
-# Configure test
-start_date = datetime.datetime(2015, 1, 1)
-model.model_config(start_date, years=5)
-
-# Run backtest and get returns
-returns = model.total_returns()
-print(returns)  # (start_date, frac_returns, yearly_return_rate, time_span, model_name)
+```
+payout = |loss_fraction| × insurance_payout_factor × capital
 ```
 
-### Analyze Results
+A rebalance follows every payout, and the price history resets.
 
-```python
-from returns.data import read_summary_data, get_model_comparison_data
-from returns.analysis import plot_df
+## Statistical output
 
-# Load summary results
-df_summary, total_returns_dict = read_summary_data("./out_data/summary_KellyModel.csv")
+For each (model, holding period) combination the framework computes:
 
-# Plot mean yearly returns vs time span
-plot_df(df_summary, "time_span", ["mean_yearly_compound_returns"],
-        title="Kelly Model Returns by Time Span")
-```
-
-### Compare Models
-
-```python
-from returns.data import get_model_comparison_data
-
-# Compare models for 10-year holding period
-files = [
-    "./out_data/summary_BuyHold.csv",
-    "./out_data/summary_Kelly.csv",
-    "./out_data/summary_Insurance.csv"
-]
-
-comparison_df = get_model_comparison_data(files, year=10)
-print(comparison_df[["model_name", "mean_total_returns", "mean_yearly_compound_returns"]])
-```
-
-## Testing
-
-Run the test suite using pytest:
-
-```bash
-pytest tests/
-```
-
-Or run specific test files:
-
-```bash
-pytest tests/test_model_class.py
-pytest tests/test_kelly_model_class.py
-pytest tests/test_insurance_class.py
-```
-
-## Configuration
-
-Key configuration parameters in the code:
-
-- `STRIDE_DAYS = 3`: Sample every 3 days for backtesting (reduces computation time)
-- `PADDING_TIME_DELTA = 6 days`: Padding near window boundaries
-- Model parameters are configured in generator functions in `bin/runner.py`
-
-## Statistical Metrics
-
-The framework calculates the following metrics for each strategy:
-
-- **Mean Returns**: Average return across all start dates
-- **Median Returns**: Middle value of return distribution
-- **Standard Deviation**: Volatility of returns
-- **Mode**: Most common return value (estimated via histogram)
-- **Fraction Losing**: Percentage of start dates with negative returns
-- **Yearly Compound Return**: Annualized geometric mean return
+| Metric | Description |
+|---|---|
+| Mean / Median returns | Central tendency of fractional and annualised returns |
+| Standard deviation | Volatility across start dates |
+| Mode | Histogram-estimated peak of the return distribution |
+| Fraction losing | Share of start dates that ended with a loss |
+| Yearly compound rate | Geometric annualised return |
 
 ## Dependencies
 
-- pandas (^2.1.1): Data manipulation and analysis
-- numpy (^1.26.0): Numerical computing
-- matplotlib (^3.8.0): Plotting and visualization
-- seaborn (^0.13.0): Statistical visualization
-- jupyter/notebook (^7.0.4): Interactive notebooks
-- pytest (^7.4.3): Testing framework
-
-## License
-
-[Add your license information here]
-
-## Contributing
-
-[Add contributing guidelines here]
-
-## Contact
-
-[Add contact information here]
+| Package | Version | Purpose |
+|---|---|---|
+| `numpy` | ^1.26 | Numerical arrays and statistics |
+| `pandas` | ^2.1 | DataFrames and time-series handling |
+| `matplotlib` | ^3.8 | Plotting |
+| `seaborn` | ^0.13 | Statistical visualisation |
+| `pydantic` | ^2.12 | LLM response validation, data schemas |
+| `requests` | ^2.32 | Ollama HTTP API calls |
+| `pyyaml` | ^6.0 | Config file loading |
+| `pytest` | ^7.4 | Test framework |
+| `pytest-cov` | ^7.0 | Coverage reporting |
+| `jupyter` / `notebook` | ^7.0 | Exploratory notebooks |

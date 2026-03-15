@@ -27,8 +27,8 @@ def sp500_file(tmp_path):
 @pytest.fixture
 def interest_file(tmp_path):
     content = (
-        "Year\tFF\tCD3\tCD6\tCD12\tTB3\tTB6\n"
-        "2020\t1.5%\t1.6%\t1.7%\t1.8%\t1.4%\t1.5%\n"
+        "observation_date\tGS1\n"
+        "2020-01-01\t1.50\n"
     )
     f = tmp_path / "interest.tab"
     f.write_text(content)
@@ -62,7 +62,7 @@ def test_get_interest_data_year_key(interest_file, monkeypatch):
 def test_get_interest_data_value_count(interest_file, monkeypatch):
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     data, _ = get_interest_data()
-    assert len(data[2020]) == 6
+    assert len(data[2020]) == 1
 
 
 def test_get_interest_data_value_parsed(interest_file, monkeypatch):
@@ -76,7 +76,7 @@ def test_combined_row_length(sp500_file, interest_file, monkeypatch):
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     data, _ = get_combined_sp500_interest_data()
     assert len(data) == 2
-    assert len(data[0]) == 13  # 7 SP500 + 6 interest
+    assert len(data[0]) == 8  # 7 SP500 + 1 interest
 
 
 def test_combined_sp500_index(sp500_file, interest_file, monkeypatch):

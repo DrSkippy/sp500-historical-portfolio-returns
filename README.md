@@ -144,10 +144,14 @@ sp500-historical-portfolio-returns/
 ## Data
 
 **`data/SP500.tab`** — tab-separated daily prices, ~17,500 rows
+- Source: https://seekingalpha.com/symbol/SP500/historical-price-quotes
 - Columns: `Date`, `Open`, `High`, `Low`, `Close*`, `Adj Close**`, `Volume`
 - Dates in `"%b %d, %Y"` format; numbers may contain locale-formatted commas
 
-**`data/interest.tab`** — annual interest rates, one row per year
+**`data/interest.tab`** — annual interest rates (FRED GS1 series), one row per year
+- Source: FRED GS1 — Market Yield on U.S. Treasury Securities at 1-Year Constant Maturity, Quoted on an Investment Basis
+- Columns: `observation_date`, `GS1`
+- Date format: `YYYY-01-01`; values are plain percentages (e.g. `1.05` = 1.05% annual yield)
 - Used as the bond/cash return proxy in Kelly and Insurance models
 
 **Output files** (written to `./out_data/` by the backtest runner):

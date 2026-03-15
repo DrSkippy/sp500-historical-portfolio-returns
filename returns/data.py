@@ -19,9 +19,9 @@ FMT_IN = "%b %d, %Y"
 FMT_out = "%Y-%m-%d"
 
 sp500_index = 5
-interest_index = 1
+interest_index = 0
 combined_sp500_index = sp500_index
-combined_interest_index = 6 + interest_index
+combined_interest_index = 7 + interest_index
 
 
 def get_interest_data():
@@ -38,8 +38,8 @@ def get_interest_data():
         header = next(reader)[1:]  # Reading the header
 
         for row in reader:
-            year = int(row[0])
-            interest_data[year] = [float(x.strip('%')) / 100. for x in row[1:]]
+            year = datetime.datetime.strptime(row[0], "%Y-%m-%d").year
+            interest_data[year] = [float(x) / 100. for x in row[1:]]
 
     # Debugging information
     logger.info(f"Reading interest data")

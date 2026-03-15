@@ -6,3 +6,4 @@ combined_data.csv
 *.log
 logs/
 .coverage
+out_data/

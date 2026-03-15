@@ -38,6 +38,8 @@ def get_interest_data():
         header = next(reader)[1:]  # Reading the header
 
         for row in reader:
+            if not row:
+                continue
             year = datetime.datetime.strptime(row[0], "%Y-%m-%d").year
             interest_data[year] = [float(x) / 100. for x in row[1:]]
 

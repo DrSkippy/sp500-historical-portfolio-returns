@@ -53,6 +53,25 @@ poetry run python bin/summarize.py
 
 Produces per-model summary CSVs and JSON files in `./out_data/`.
 
+### Generate the report site
+
+Run after summarize.py to build the static report data file:
+
+```bash
+poetry run python bin/generate_report.py
+```
+
+Reads all `out_data/summary_*.csv` and `out_data/total_returns_*.json` files and writes
+`trading_strategies_report/data/report_data.json` (~8 MB). To view the report locally:
+
+```bash
+cd trading_strategies_report && python3 -m http.server 8080
+```
+
+Open `http://localhost:8080`. The site has six interactive sections (overview table, return
+curves, risk over time, distribution explorer, risk/return scatter, investment advice) plus
+static strategy description pages for each of the three strategy families.
+
 ### Run tests
 
 ```bash
@@ -115,11 +134,12 @@ sp500-historical-portfolio-returns/
 ├── returns/
 │   ├── models.py              # Model, KellyModel, InsuranceModel
 │   ├── data.py                # Data loading and combination
-│   ├── analysis.py            # Aggregation, statistics, plotting
+│   ├── analysis.py            # Aggregation and statistics
 │   └── monthly_returns.py     # 30-day rolling return series
 ├── bin/
 │   ├── runner.py              # Main backtest entry point
 │   ├── summarize.py           # Post-process backtest output
+│   ├── generate_report.py     # Build report_data.json for the report site
 │   ├── get_monthly_returns.py # Rolling returns analysis
 │   ├── transform_new_sp500_records.py  # Data ingestion helper
 │   └── test_agent.py          # Ollama-powered test runner
@@ -134,6 +154,12 @@ sp500-historical-portfolio-returns/
 │   ├── SP500.tab              # Daily OHLCV + Adj Close (Aug 1956 – Mar 2026)
 │   └── interest.tab           # Annual interest rates (bond return proxy)
 ├── out_data/                  # Backtest output (generated, not committed)
+├── trading_strategies_report/ # Static HTML/JS report site
+│   ├── index.html             # Single-page interactive report (Chart.js)
+│   ├── css/style.css
+│   ├── js/                    # app.js, charts.js
+│   ├── strategies/            # buy-hold.html, kelly.html, insurance.html
+│   └── data/                  # report_data.json (generated, not committed)
 ├── notebooks/                 # Exploratory Jupyter notebooks
 ├── .claude/agents/
 │   └── test-runner.md         # Claude Code subagent definition
@@ -174,13 +200,14 @@ it rebalances back to target, applying daily compounding interest to the cash/bo
 ### Insurance (`InsuranceModel`)
 
 Extends Kelly with a rolling 6-day price window. If the price drops more than
-`insurance_deductible` (e.g., 15%) over that window, an insurance payout fires:
+`insurance_deductible` (tested values: 9%, 12%, 18%) over that window, an insurance payout fires:
 
 ```
-payout = |loss_fraction| × insurance_payout_factor × capital
+reserve = reserve × |loss_fraction| × payout_factor   # payout_factor = 10
 ```
 
-A rebalance follows every payout, and the price history resets.
+The reserve (the `ins_frac` portion of the portfolio) replaces its value with a leveraged
+multiple of the loss. A rebalance follows every payout, and the price history resets.
 
 ## Statistical output
 

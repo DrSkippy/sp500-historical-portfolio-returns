@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S&amp;P 500 Trading Strategies Report</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>S&amp;P 500 Historical Portfolio Returns</h1>
+    <p class="subtitle">Comparing Buy &amp; Hold, Fractional Kelly, and Insurance strategies across 1–15 year holding periods</p>
+  </header>
+
+  <nav id="section-nav">
+    <a href="#section-overview">Overview</a>
+    <a href="#section-return-curves">Return Curves</a>
+    <a href="#section-risk">Risk Over Time</a>
+    <a href="#section-distribution">Distributions</a>
+    <a href="#section-scatter">Risk/Return</a>
+    <a href="#section-advice">Advice</a>
+    <span class="nav-divider">|</span>
+    <a href="strategies/buy-hold.html">Buy &amp; Hold ↗</a>
+    <a href="strategies/kelly.html">Kelly ↗</a>
+    <a href="strategies/insurance.html">Insurance ↗</a>
+  </nav>
+
+  <main id="app">
+    <div id="loading" class="loading-message">Loading data…</div>
+    <div id="error" class="error-message hidden"></div>
+
+    <!-- Section 1: Overview Table -->
+    <section id="section-overview" class="report-section hidden">
+      <h2>1. Overview: Key Metrics at a Glance</h2>
+      <div class="controls">
+        <label for="overview-year-slider">Holding period:
+          <strong id="overview-year-label">10</strong> years
+        </label>
+        <input type="range" id="overview-year-slider" min="1" max="15" value="10" step="1" />
+      </div>
+      <div class="table-wrapper">
+        <table id="overview-table">
+          <thead>
+            <tr>
+              <th class="sortable" data-col="name">Strategy</th>
+              <th class="sortable" data-col="mean_yearly">Mean Yearly Return</th>
+              <th class="sortable" data-col="median_yearly">Median Yearly Return</th>
+              <th class="sortable" data-col="sdev_yearly">Std Dev (yearly)</th>
+              <th class="sortable" data-col="fraction_losing">% Losing Starts</th>
+            </tr>
+          </thead>
+          <tbody id="overview-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 2: Return Curves -->
+    <section id="section-return-curves" class="report-section hidden">
+      <h2>2. Mean Annualized Return vs. Holding Period</h2>
+      <div class="controls">
+        <div class="family-toggles">
+          <label><input type="checkbox" class="family-toggle" data-family="buy_hold" checked /> Buy &amp; Hold</label>
+          <label><input type="checkbox" class="family-toggle" data-family="kelly" checked /> Fractional Kelly</label>
+          <label><input type="checkbox" class="family-toggle" data-family="insurance" checked /> Insurance</label>
+        </div>
+        <div id="model-toggles" class="model-toggles"></div>
+      </div>
+      <div class="chart-container">
+        <canvas id="return-curves-chart"></canvas>
+      </div>
+    </section>
+
+    <!-- Section 3: Risk Over Time -->
+    <section id="section-risk" class="report-section hidden">
+      <h2>3. Risk Over Time: Fraction of Losing Starts</h2>
+      <p class="section-desc">How often does each strategy lose money, depending on how long you hold?</p>
+      <div class="controls">
+        <div class="family-toggles">
+          <label><input type="checkbox" class="risk-family-toggle" data-family="buy_hold" checked /> Buy &amp; Hold</label>
+          <label><input type="checkbox" class="risk-family-toggle" data-family="kelly" checked /> Fractional Kelly</label>
+          <label><input type="checkbox" class="risk-family-toggle" data-family="insurance" checked /> Insurance</label>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas id="risk-chart"></canvas>
+      </div>
+    </section>
+
+    <!-- Section 4: Distribution Explorer -->
+    <section id="section-distribution" class="report-section hidden">
+      <h2>4. Return Distribution Explorer</h2>
+      <div class="controls dist-controls">
+        <div class="control-group">
+          <label for="dist-model-select">Strategy:</label>
+          <select id="dist-model-select"></select>
+        </div>
+        <div class="control-group">
+          <label for="dist-year-select">Holding period:</label>
+          <select id="dist-year-select">
+            <option value="1">1 year</option>
+            <option value="5">5 years</option>
+            <option value="10" selected>10 years</option>
+            <option value="15">15 years</option>
+          </select>
+        </div>
+        <div class="control-group overlay-group">
+          <label>
+            <input type="checkbox" id="dist-overlay-checkbox" />
+            Compare with:
+          </label>
+          <select id="dist-overlay-model-select"></select>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas id="distribution-chart"></canvas>
+      </div>
+    </section>
+
+    <!-- Section 5: Risk/Return Scatter -->
+    <section id="section-scatter" class="report-section hidden">
+      <h2>5. Risk / Return Scatter (Efficient Frontier View)</h2>
+      <div class="controls">
+        <label for="scatter-year-slider">Holding period:
+          <strong id="scatter-year-label">10</strong> years
+        </label>
+        <input type="range" id="scatter-year-slider" min="1" max="15" value="10" step="1" />
+      </div>
+      <div class="chart-container">
+        <canvas id="scatter-chart"></canvas>
+      </div>
+    </section>
+
+    <!-- Section 6: Practical Advice -->
+    <section id="section-advice" class="report-section hidden">
+      <h2>6. Practical Advice for Individual Investors</h2>
+      <div id="advice-content"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Based on S&amp;P 500 daily price history. Past performance does not guarantee future results. This is not financial advice.</p>
+  </footer>
+
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

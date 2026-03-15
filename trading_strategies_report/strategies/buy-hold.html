@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buy &amp; Hold — Strategy Guide</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="strategies.css" />
+</head>
+<body>
+  <header>
+    <h1>Buy &amp; Hold</h1>
+    <p class="subtitle">The passive baseline — buy once, hold for the full period, sell at the end</p>
+  </header>
+
+  <nav id="section-nav">
+    <a href="../index.html">← Back to Report</a>
+    <a href="buy-hold.html" class="nav-active">Buy &amp; Hold</a>
+    <a href="kelly.html">Fractional Kelly</a>
+    <a href="insurance.html">Insurance</a>
+  </nav>
+
+  <main id="app">
+    <section class="report-section strategy-header family-buy_hold-section">
+      <div class="strategy-badge-row">
+        <span class="strategy-pill pill-buy_hold">Buy &amp; Hold</span>
+        <span class="strategy-meta">1 variant &nbsp;·&nbsp; 0 parameters &nbsp;·&nbsp; Baseline strategy</span>
+      </div>
+      <p class="strategy-summary">
+        Invest everything on day one. Do nothing. Sell on the last day. Buy &amp; Hold is the
+        simplest possible equity strategy and serves as the benchmark against which all active
+        strategies are measured.
+      </p>
+    </section>
+
+    <section class="report-section">
+      <h2>How It Works</h2>
+      <p>On the first trading day of the holding period the entire portfolio is converted into
+        S&amp;P 500 shares at the prevailing price. Those shares are held without any adjustment
+        until the last trading day, when they are all sold at the closing price.</p>
+
+      <div class="mechanics-grid">
+        <div class="mechanic-card">
+          <div class="mechanic-icon">📅</div>
+          <h3>Day 1</h3>
+          <p>Buy <code>capital ÷ price</code> shares. Cash balance drops to zero.</p>
+        </div>
+        <div class="mechanic-card">
+          <div class="mechanic-icon">⏳</div>
+          <h3>Holding period</h3>
+          <p>No trades. The simulation skips ahead to just before the end date. Cash earns nothing.</p>
+        </div>
+        <div class="mechanic-card">
+          <div class="mechanic-icon">🏁</div>
+          <h3>Last day</h3>
+          <p>Sell all shares. Final capital = shares × closing price. Return is calculated.</p>
+        </div>
+      </div>
+
+      <div class="formula-block">
+        <h4>Return calculation</h4>
+        <pre>total_return    = (final_capital − initial_capital) / initial_capital
+yearly_return   = (1 + total_return) ^ (1 / years) − 1</pre>
+      </div>
+    </section>
+
+    <section class="report-section">
+      <h2>Motivation</h2>
+      <p>Buy &amp; Hold is justified by a large body of empirical evidence:</p>
+      <ul class="prose-list">
+        <li><strong>Markets trend upward over long horizons.</strong>
+            The S&amp;P 500 has delivered positive real returns over every rolling 20-year window
+            in its history. Staying invested captures that drift.</li>
+        <li><strong>Market timing is reliably destructive.</strong>
+            Missing the ten best trading days in any decade typically halves long-run returns.
+            Buy &amp; Hold avoids the timing problem entirely by never being out of the market.</li>
+        <li><strong>Transaction costs and taxes are minimised.</strong>
+            Every trade has a spread, and in taxable accounts every sale triggers a realisation.
+            With zero intermediate trades, Buy &amp; Hold pays these costs only once.</li>
+        <li><strong>Behavioural advantages.</strong>
+            An investor who never checks prices has no opportunity to panic-sell at a bottom or
+            chase a top. Simplicity is a form of discipline.</li>
+      </ul>
+      <p>Within this backtest, Buy &amp; Hold also has a structural advantage: the S&amp;P 500
+        is a market-cap-weighted index that is itself rebalanced by its index committee, so the
+        investor is passively tracking a continuously updated diversified basket without paying
+        for that maintenance.</p>
+    </section>
+
+    <section class="report-section">
+      <h2>Parameters</h2>
+      <p>Buy &amp; Hold has <strong>no free parameters</strong>. It is a single deterministic
+        strategy. Its performance at any holding period depends entirely on the starting price
+        and the ending price — there are no knobs to tune.</p>
+      <p>This makes it the ideal baseline: any strategy that adds complexity (and therefore
+        risk of mis-configuration) must justify its added parameters by consistently improving on
+        the Buy &amp; Hold result across the full distribution of outcomes, not just the mean.</p>
+    </section>
+
+    <section class="report-section">
+      <h2>Strengths &amp; Limitations</h2>
+      <div class="pros-cons-grid">
+        <div class="pros-card">
+          <h3>Strengths</h3>
+          <ul>
+            <li>Zero trading complexity — impossible to mis-execute</li>
+            <li>Captures full market upside with no drag from rebalancing friction</li>
+            <li>Low sequence-of-returns sensitivity in the middle of the holding period
+                (the entry and exit prices are all that matter)</li>
+            <li>Strong long-term median returns; fraction of losing starts approaches zero beyond 10 years</li>
+          </ul>
+        </div>
+        <div class="cons-card">
+          <h3>Limitations</h3>
+          <ul>
+            <li>Full downside exposure at all times — no volatility dampening</li>
+            <li>At short horizons (1–3 years), losing-start rates near 25–30%</li>
+            <li>No mechanism to add alpha above the market return</li>
+            <li>Cash earns nothing; idle liquidity is a permanent drag compared to
+                mixed-asset strategies</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="report-section">
+      <h2>Role in This Backtest</h2>
+      <p>Every chart in the report overlays Buy &amp; Hold as a thick reference line. When
+        evaluating any other strategy, ask two questions:</p>
+      <ol class="prose-list">
+        <li>Does it have a materially lower <em>fraction of losing starts</em> at the horizons
+            you care about?</li>
+        <li>Does it achieve a higher <em>mean annualised return</em> without an offsetting
+            increase in standard deviation?</li>
+      </ol>
+      <p>If the answer to both is no, the complexity of that strategy is not paying off for the
+        typical investor.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Based on S&amp;P 500 daily price history. Past performance does not guarantee future results. This is not financial advice.</p>
+  </footer>
+</body>
+</html>

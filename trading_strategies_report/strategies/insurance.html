@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Insurance — Strategy Guide</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="strategies.css" />
+</head>
+<body>
+  <header>
+    <h1>Insurance</h1>
+    <p class="subtitle">Equity portfolio with a crash-triggered reserve — absorb sharp drawdowns without selling stocks</p>
+  </header>
+
+  <nav id="section-nav">
+    <a href="../index.html">← Back to Report</a>
+    <a href="buy-hold.html">Buy &amp; Hold</a>
+    <a href="kelly.html">Fractional Kelly</a>
+    <a href="insurance.html" class="nav-active">Insurance</a>
+  </nav>
+
+  <main id="app">
+    <section class="report-section strategy-header family-insurance-section">
+      <div class="strategy-badge-row">
+        <span class="strategy-pill pill-insurance">Insurance</span>
+        <span class="strategy-meta">6 variants &nbsp;·&nbsp; 2 parameters &nbsp;·&nbsp;
+          ins_frac ∈ {5%, 10%} &nbsp;×&nbsp; deductible ∈ {9%, 12%, 18%}</span>
+      </div>
+      <p class="strategy-summary">
+        Hold nearly all capital in equities, but set aside a small reserve that acts as
+        crash insurance. When the market drops sharply over a 6-day window and exceeds a
+        minimum loss threshold (the deductible), the reserve pays out a leveraged multiple of
+        the loss, partially offsetting the equity decline. The reserve earns a small yield
+        otherwise, while the portfolio rebalances every 90 days.
+      </p>
+    </section>
+
+    <section class="report-section">
+      <h2>Motivation</h2>
+      <p>The largest single threat to a long-term equity investor is not gradual underperformance
+        — it is a catastrophic drawdown that forces a behavioural exit at the bottom. The 2000–02
+        dot-com bust, 2008–09 financial crisis, and 2020 pandemic crash each saw the S&amp;P 500
+        fall 30–55%. Investors who sold during those drawdowns locked in losses and often missed
+        the recovery.</p>
+      <p>Traditional diversification (bonds, gold) reduces drawdown severity but also permanently
+        caps upside. The Insurance strategy attempts a different trade-off:</p>
+      <ul class="prose-list">
+        <li><strong>Keep almost all capital in stocks</strong> to maintain equity upside during
+            normal markets.</li>
+        <li><strong>Reserve a small fraction</strong> (5–10%) as a "policy" that activates only
+            when a sharp crash occurs.</li>
+        <li><strong>Pay a small ongoing cost</strong> (the reserve earns below-market returns)
+            in exchange for a leveraged payout precisely when equity losses are largest.</li>
+      </ul>
+      <p>The goal is to reduce the fraction of losing starts at medium horizons without
+        materially sacrificing the long-run return available from full equity exposure.</p>
+    </section>
+
+    <section class="report-section">
+      <h2>How It Works</h2>
+
+      <div class="mechanics-grid">
+        <div class="mechanic-card">
+          <div class="mechanic-icon">📅</div>
+          <h3>Day 1</h3>
+          <p>Buy <code>(1 − ins_frac) × capital / price</code> shares.
+            The remaining <code>ins_frac × capital</code> is held as the insurance reserve.</p>
+        </div>
+        <div class="mechanic-card">
+          <div class="mechanic-icon">📉</div>
+          <h3>Every trading day</h3>
+          <p>Compare today's price to the price 6 trading days ago. If the 6-day loss
+            ≥ deductible, the payout clause activates.</p>
+        </div>
+        <div class="mechanic-card">
+          <div class="mechanic-icon">💰</div>
+          <h3>Payout event</h3>
+          <p>Reserve is replaced by <code>reserve × |loss_fraction| × 10</code>.
+            Portfolio is then rebalanced. The price history window resets.</p>
+        </div>
+        <div class="mechanic-card">
+          <div class="mechanic-icon">🔄</div>
+          <h3>Every 90 days</h3>
+          <p>Whether or not a payout occurred, rebalance the portfolio back to the
+            target stock / reserve split.</p>
+        </div>
+      </div>
+
+      <div class="formula-block">
+        <h4>Payout trigger and size</h4>
+        <pre>loss_frac = (price_today − price_6_days_ago) / price_6_days_ago
+
+if loss_frac ≤ −deductible:
+    reserve = reserve × |loss_frac| × payout_factor   # payout_factor = 10
+    # then rebalance immediately
+    price_history.reset()</pre>
+        <p>Example: if <code>deductible = 0.12</code> and the market falls 15% in 6 days,
+          the reserve grows by 15% × 10 = 150% of its current value. A $500 reserve becomes
+          $1,250 — partially offsetting the $1,500 equity loss on a $10,000 portfolio.</p>
+      </div>
+
+      <div class="formula-block">
+        <h4>Reserve yield (between payouts)</h4>
+        <pre>reserve ×= (1 + insurance_rate_yield) ^ (days_elapsed / 365)
+# insurance_rate_yield ≈ 0.5% / year (fixed)</pre>
+        <p>The reserve earns a flat 0.5%/year — substantially below Treasury rates — reflecting
+          the cost of maintaining a liquid crash-response facility. This is the ongoing
+          "insurance premium" the strategy pays.</p>
+      </div>
+
+      <h3>Inheritance from Fractional Kelly</h3>
+      <p>InsuranceModel extends KellyModel in the codebase. The rebalance routine is identical:
+        after a payout or at each 90-day interval, the total portfolio value
+        (reserve + stock value) is computed and shares are bought or sold to restore the
+        target <code>stock_frac = 1 − ins_frac</code> split. The key difference is that the
+        reserve earns 0.5%/yr instead of the prevailing Treasury rate, and the reserve
+        can jump discontinuously when a payout is triggered.</p>
+    </section>
+
+    <section class="report-section">
+      <h2>Parameters Explored</h2>
+
+      <table class="param-table">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Values tested</th>
+            <th>What it controls</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>ins_frac</code></td>
+            <td>0.05, 0.10</td>
+            <td>
+              Fraction of portfolio held as insurance reserve. A larger reserve means a larger
+              payout when triggered, but also a larger permanent drag from the below-market
+              0.5%/yr yield. At 5% the drag is minimal; at 10% it becomes meaningful over
+              a 10-year horizon.
+            </td>
+          </tr>
+          <tr>
+            <td><code>deductible</code></td>
+            <td>0.09, 0.12, 0.18</td>
+            <td>
+              Minimum 6-day price decline needed to trigger a payout. A lower deductible
+              means the policy fires more often — providing more frequent protection but also
+              resetting the price history window more often, which can fragment coverage.
+              A higher deductible reserves the payout for true crash events only.
+            </td>
+          </tr>
+          <tr>
+            <td><code>rebalance_period</code></td>
+            <td>90 days (fixed for all Insurance variants)</td>
+            <td>
+              All Insurance variants rebalance quarterly. This is fixed to isolate the effect
+              of the ins_frac and deductible parameters.
+            </td>
+          </tr>
+          <tr>
+            <td><code>payout_factor</code></td>
+            <td>10× (fixed)</td>
+            <td>
+              The leverage multiplier applied to the reserve on a payout event. Fixed at 10
+              for all variants. Combined with ins_frac = 5–10%, this produces payouts of
+              roughly 0.5–1× the loss on the equity book when triggered.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>The 2 × 3 = <strong>6 variants</strong> span a range from
+        <em>Ins 5% ded9%</em> (small reserve, fires on moderate crashes) to
+        <em>Ins 10% ded18%</em> (larger reserve, fires only on severe crashes).</p>
+
+      <h3>Deductible intuition</h3>
+      <p>Thinking of the 6-day window: a 9% decline in 6 trading days corresponds to roughly
+        a 45% annualised crash rate — an extreme event. A 18% decline in 6 days would be
+        historically rare even in the worst market panics. The three deductible values bracket
+        different regimes:</p>
+      <ul class="prose-list">
+        <li><strong>9%:</strong> Fires during large corrections (a 2018-style Q4 sell-off
+            might trigger this). More frequent payouts, but each payout is smaller
+            (loss_frac is closer to the deductible floor).</li>
+        <li><strong>12%:</strong> Targets genuine crashes — 2008-style events. Fewer triggers
+            but each with a more substantial loss_frac multiplier.</li>
+        <li><strong>18%:</strong> Only the most severe crashes (early pandemic March 2020,
+            October 1987). Very infrequent; the reserve sits idle most of the time and the
+            ongoing yield drag may dominate over long periods.</li>
+      </ul>
+    </section>
+
+    <section class="report-section">
+      <h2>Strengths &amp; Limitations</h2>
+      <div class="pros-cons-grid">
+        <div class="pros-card">
+          <h3>Strengths</h3>
+          <ul>
+            <li>Maintains near-full equity exposure during normal markets — captures most
+                of the equity risk premium</li>
+            <li>Crash payouts are countercyclical: the reserve grows precisely when equity
+                losses are largest, providing capital at the best rebalancing opportunity</li>
+            <li>No bond allocation eating into equity upside during bull runs</li>
+            <li>The leveraged payout (10×) means a small reserve fraction produces a
+                meaningful cushion on large drawdown events</li>
+          </ul>
+        </div>
+        <div class="cons-card">
+          <h3>Limitations</h3>
+          <ul>
+            <li>The reserve earns only 0.5%/yr — substantially below risk-free rates.
+                Over 10–15 years on a 10% reserve, this is a ~1–2% total return drag</li>
+            <li>Slow-moving bear markets (gradual 30% decline over 18 months) may never
+                trigger the 6-day threshold, providing no protection</li>
+            <li>After a payout the history window resets, creating a coverage gap
+                immediately following the crash</li>
+            <li>Payout sizing is mechanical — the reserve can be depleted and not
+                immediately restored to target size if a payout produces a large jump</li>
+            <li>6 variants is a narrower exploration space than Kelly; the optimal
+                parameterisation is likely sensitive to the specific crash profile
+                of the historical period</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="report-section">
+      <h2>What the Data Shows</h2>
+      <p>In the backtest results, Insurance variants typically:</p>
+      <ul class="prose-list">
+        <li>Sit <em>between</em> Buy &amp; Hold and Fractional Kelly on the risk/return
+            scatter at most horizons — less bond drag than Kelly, slightly more
+            protection than pure Buy &amp; Hold</li>
+        <li>Show the most differentiation from Buy &amp; Hold in periods immediately
+            following a sharp crash — the post-crash rebalance (with an inflated reserve)
+            buys equity at depressed prices</li>
+        <li>Generally underperform the best Kelly variants at 10–15 year horizons because
+            the 0.5%/yr reserve yield is a persistent drag, while Kelly's bond allocation
+            earns the actual Treasury rate</li>
+        <li>Smaller deductibles (9%) tend to produce more consistent (if smaller) payouts;
+            larger deductibles (18%) concentrate protection on rarer, larger events</li>
+      </ul>
+      <p>Use the <a href="../index.html#section-distribution">Distribution Explorer</a>
+        to compare the Insurance tail behaviour directly against Buy &amp; Hold and Kelly
+        at your target horizon. The left tail (worst outcomes) is where Insurance strategies
+        are designed to differ most.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Based on S&amp;P 500 daily price history. Past performance does not guarantee future results. This is not financial advice.</p>
+  </footer>
+</body>
+</html>

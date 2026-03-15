@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fractional Kelly — Strategy Guide</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="strategies.css" />
+</head>
+<body>
+  <header>
+    <h1>Fractional Kelly</h1>
+    <p class="subtitle">Mixed stock/bond portfolio with periodic rebalancing — buy low, sell high automatically</p>
+  </header>
+
+  <nav id="section-nav">
+    <a href="../index.html">← Back to Report</a>
+    <a href="buy-hold.html">Buy &amp; Hold</a>
+    <a href="kelly.html" class="nav-active">Fractional Kelly</a>
+    <a href="insurance.html">Insurance</a>
+  </nav>
+
+  <main id="app">
+    <section class="report-section strategy-header family-kelly-section">
+      <div class="strategy-badge-row">
+        <span class="strategy-pill pill-kelly">Fractional Kelly</span>
+        <span class="strategy-meta">8 variants &nbsp;·&nbsp; 2 parameters &nbsp;·&nbsp;
+          bond_frac ∈ {10%, 15%, 20%, 25%} &nbsp;×&nbsp; rebalance ∈ {90, 180 days}</span>
+      </div>
+      <p class="strategy-summary">
+        Hold a fixed fraction of the portfolio in bonds (cash earning the 1-year Treasury rate)
+        and the remainder in S&amp;P 500 equities. Rebalance back to the target allocation
+        every 90 or 180 days. The periodic rebalance mechanically forces buying after declines
+        and selling after rallies — a systematic contrarian tilt that can add risk-adjusted return
+        over long horizons.
+      </p>
+    </section>
+
+    <section class="report-section">
+      <h2>The Kelly Criterion — Background</h2>
+      <p>John Kelly's 1956 formula gives the fraction of capital to wager on a favourable bet
+        in order to maximise the long-run growth rate of the portfolio (the geometric mean).
+        Applied to equity markets:</p>
+
+      <div class="formula-block">
+        <h4>Full Kelly fraction (stocks)</h4>
+        <pre>f* = (μ − r) / σ²</pre>
+        <p>where <code>μ</code> is the expected stock return, <code>r</code> is the risk-free
+          rate, and <code>σ²</code> is the variance of returns.</p>
+      </div>
+
+      <p>The full Kelly bet is theoretically optimal but is highly sensitive to estimation error
+        in <code>μ</code> and <code>σ</code>. In practice, investors use a <em>fraction</em>
+        of the Kelly bet — typically 25–50% — to reduce variance and avoid catastrophic drawdowns
+        while still capturing most of the long-run growth advantage.</p>
+
+      <p>In this backtest the "bond fraction" is the complement of the stock allocation:
+        a <code>bond_frac</code> of 0.20 means 20% bonds, 80% stocks. A higher bond fraction
+        corresponds to a more conservative, lower-leverage position.</p>
+    </section>
+
+    <section class="report-section">
+      <h2>How It Works</h2>
+
+      <div class="mechanics-grid">
+        <div class="mechanic-card">
+          <div class="mechanic-icon">📅</div>
+          <h3>Day 1</h3>
+          <p>Buy <code>(1 − bond_frac) × capital / price</code> shares.
+            Remaining <code>bond_frac × capital</code> is held as cash.</p>
+        </div>
+        <div class="mechanic-card">
+          <div class="mechanic-icon">🔄</div>
+          <h3>Rebalance day</h3>
+          <p>Apply accrued Treasury interest to cash. Compute total portfolio value.
+            Buy or sell shares to restore the target stock fraction.</p>
+        </div>
+        <div class="mechanic-card">
+          <div class="mechanic-icon">🏁</div>
+          <h3>Last day</h3>
+          <p>Apply final interest to cash, sell all shares, sum cash + stock proceeds.</p>
+        </div>
+      </div>
+
+      <div class="formula-block">
+        <h4>Rebalance mechanics (every rebalance_period days)</h4>
+        <pre>cash        ×= (1 + interest_rate) ^ (days_elapsed / 365)
+total_value  = cash + shares × price
+target_shares = (1 − bond_frac) × total_value / price
+delta_shares  = target_shares − current_shares
+cash        −= delta_shares × price      # positive delta → buy shares
+shares      += delta_shares</pre>
+        <p>The interest rate is the 1-year US Treasury yield on the rebalance date, drawn from
+          the FRED GS1 series.</p>
+      </div>
+
+      <h3>Why rebalancing adds value</h3>
+      <p>After a market decline the stock allocation falls below its target. Rebalancing buys
+        more shares at a lower price. After a rally the stock allocation grows above target;
+        rebalancing sells some shares, locking in gains. Over many market cycles this
+        "buy low, sell high" behaviour extracts a <em>rebalancing bonus</em> — a positive
+        contribution to returns that is separate from the equity risk premium.</p>
+    </section>
+
+    <section class="report-section">
+      <h2>Parameters Explored</h2>
+
+      <table class="param-table">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Values tested</th>
+            <th>What it controls</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>bond_frac</code></td>
+            <td>0.10, 0.15, 0.20, 0.25</td>
+            <td>
+              Fraction of portfolio held in bonds/cash at each rebalance.
+              Lower values mean more equity exposure and higher expected return with
+              higher variance. Higher values dampen drawdowns but reduce upside.
+            </td>
+          </tr>
+          <tr>
+            <td><code>rebalance_period</code></td>
+            <td>90 days, 180 days</td>
+            <td>
+              How frequently the portfolio is returned to its target allocation.
+              Shorter periods respond faster to market moves; longer periods reduce
+              trading frequency and are less sensitive to short-term noise.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>The 4 × 2 = <strong>8 variants</strong> span a range from
+        <em>Kelly 10% / 90-day</em> (aggressive, most equity-like) to
+        <em>Kelly 25% / 180-day</em> (conservative, slowest rebalance).</p>
+
+      <h3>Parameter intuition</h3>
+      <ul class="prose-list">
+        <li><strong>Low bond_frac (10–15%):</strong> Behaves very similarly to Buy &amp; Hold
+            in bull markets but captures more of the rebalancing bonus in volatile markets.
+            Slightly higher risk at short horizons.</li>
+        <li><strong>High bond_frac (20–25%):</strong> Materially lower volatility; the bond
+            cushion reduces the fraction of losing starts at 1–3 year horizons.
+            Ceiling on long-run returns is correspondingly lower.</li>
+        <li><strong>90-day rebalance:</strong> More reactive — captures more of the
+            rebalancing bonus but is more sensitive to short-term whipsaws.</li>
+        <li><strong>180-day rebalance:</strong> Trades only twice a year; smoother trajectory,
+            slightly lower rebalancing bonus but less exposure to false signals.</li>
+      </ul>
+    </section>
+
+    <section class="report-section">
+      <h2>Strengths &amp; Limitations</h2>
+      <div class="pros-cons-grid">
+        <div class="pros-card">
+          <h3>Strengths</h3>
+          <ul>
+            <li>Systematic contrarian behaviour — no emotional decision-making</li>
+            <li>Bond allocation earns actual interest (FRED GS1 Treasury rate),
+                not just sitting idle</li>
+            <li>Rebalancing bonus is a well-documented, robust source of return
+                in volatile markets</li>
+            <li>Lower fraction of losing starts than Buy &amp; Hold at medium horizons,
+                especially with higher bond_frac</li>
+            <li>Easy to implement with annual or semi-annual tax-loss harvesting windows</li>
+          </ul>
+        </div>
+        <div class="cons-card">
+          <h3>Limitations</h3>
+          <ul>
+            <li>In a steady bull market with low volatility, rebalancing repeatedly sells
+                the winner (equities) into bonds — underperforming Buy &amp; Hold</li>
+            <li>Bond returns in this backtest track the 1-year Treasury, which has been near
+                zero for extended periods — diluting the value of the bond allocation</li>
+            <li>Requires discipline to execute rebalances during drawdowns, which is the
+                psychologically hardest moment to buy</li>
+            <li>Transaction costs (spread, commissions, taxes) are not modelled here;
+                frequent rebalancing in taxable accounts can erode the bonus significantly</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="report-section">
+      <h2>What the Data Shows</h2>
+      <p>In the backtest results, Fractional Kelly variants typically:</p>
+      <ul class="prose-list">
+        <li>Offer modestly lower <em>fraction of losing starts</em> than Buy &amp; Hold
+            at 5–10 year horizons, particularly with higher bond fractions</li>
+        <li>Converge toward — or occasionally exceed — Buy &amp; Hold mean returns at
+            10–15 year horizons, especially in volatile decades</li>
+        <li>Show the most differentiation from Buy &amp; Hold in periods with large
+            mid-cycle corrections (early 2000s tech bust, 2008–09 financial crisis)</li>
+      </ul>
+      <p>Use the <a href="../index.html#section-scatter">Risk/Return scatter</a> and
+        <a href="../index.html#section-return-curves">Return Curves</a> sections of the report
+        to compare specific variants side by side.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Based on S&amp;P 500 daily price history. Past performance does not guarantee future results. This is not financial advice.</p>
+  </footer>
+</body>
+</html>

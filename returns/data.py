@@ -95,9 +95,11 @@ def get_combined_sp500_interest_data():
     logger.info(f"Combining S&P 500 and Interest data")
     sp500, sp500_header = get_sp500_data()
     interest, interest_header = get_interest_data()
+    max_interest_year = max(interest.keys())
     # Append rows from interest data to S&P 500 data
     for i, row in enumerate(sp500):
-        result.append(row + interest[row[0].year])
+        year = min(row[0].year, max_interest_year)
+        result.append(row + interest[year])
     return result, sp500_header + interest_header
 
 

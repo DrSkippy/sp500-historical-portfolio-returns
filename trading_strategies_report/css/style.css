@@ -272,3 +272,22 @@ footer {
   #section-nav { padding: .4rem 1rem; }
   .chart-container { height: 280px; }
 }
+
+/* ─── Stats Strip (Recent Returns page) ────────────────────────────────────── */
+.stats-strip { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+.stat { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 6px; padding: .5rem 1rem; min-width: 120px; }
+.stat-label { display: block; font-size: .75rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.stat-value { display: block; font-size: 1.1rem; font-weight: 700; }
+.stat-value.positive { color: #2ca02c; }
+.stat-value.negative { color: #d62728; }
+
+/* ─── Recent Returns Table ──────────────────────────────────────────────────── */
+.recent-returns-table { width: 100%; border-collapse: collapse; font-size: .9rem; margin-top: .75rem; }
+.recent-returns-table th, .recent-returns-table td { padding: .4rem .75rem; border-bottom: 1px solid var(--color-border); text-align: right; }
+.recent-returns-table th:first-child, .recent-returns-table td:first-child { text-align: left; }
+.recent-returns-table th { background: var(--color-bg); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+.positive { color: #2ca02c; font-weight: 600; }
+.negative { color: #d62728; font-weight: 600; }
+
+/* ─── Nav active state ──────────────────────────────────────────────────────── */
+#section-nav a.nav-active { color: var(--color-text); background: var(--color-bg); font-weight: 600; }

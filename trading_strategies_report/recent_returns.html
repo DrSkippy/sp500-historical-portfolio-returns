@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recent Returns in Historical Context — S&P 500</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>S&P 500 Historical Portfolio Returns</h1>
+    <p class="subtitle">Recent returns in historical context — daily, weekly, and monthly</p>
+  </header>
+
+  <nav id="section-nav">
+    <a href="index.html">← Back to Report</a>
+    <span class="nav-divider">|</span>
+    <a href="#section-daily">Daily</a>
+    <a href="#section-weekly">Weekly</a>
+    <a href="#section-monthly">Monthly</a>
+    <span class="nav-divider">|</span>
+    <a href="strategies/buy-hold.html">Buy &amp; Hold ↗</a>
+    <a href="strategies/kelly.html">Kelly ↗</a>
+    <a href="strategies/insurance.html">Insurance ↗</a>
+    <a href="recent_returns.html" class="nav-active">Recent Returns ↗</a>
+  </nav>
+
+  <main id="app" style="max-width:1200px;margin:0 auto;padding:2rem;display:flex;flex-direction:column;gap:2.5rem;">
+    <div id="loading" class="loading-message">Loading data…</div>
+    <div id="error" class="error-message hidden"></div>
+
+    <!-- Section 1: Daily Returns -->
+    <section id="section-daily" class="report-section hidden">
+      <h2>Daily Returns (1 trading day)</h2>
+      <p class="section-desc">
+        Distribution of all daily S&P 500 returns since 1956. Vertical lines show the last 30 trading days of SPY.
+        <strong>Green</strong> = positive day, <strong>red</strong> = negative day; most recent is fully opaque.
+      </p>
+      <div id="daily-stats" class="stats-strip"></div>
+      <div class="chart-container" style="height:360px;">
+        <canvas id="daily-chart"></canvas>
+      </div>
+      <div id="daily-table-wrap"></div>
+    </section>
+
+    <!-- Section 2: Weekly Returns -->
+    <section id="section-weekly" class="report-section hidden">
+      <h2>Weekly Returns (5 trading days)</h2>
+      <p class="section-desc">
+        Distribution of all 5-day rolling returns since 1956. Vertical lines show the last 10 non-overlapping 5-day SPY windows.
+      </p>
+      <div id="weekly-stats" class="stats-strip"></div>
+      <div class="chart-container" style="height:360px;">
+        <canvas id="weekly-chart"></canvas>
+      </div>
+      <div id="weekly-table-wrap"></div>
+    </section>
+
+    <!-- Section 3: Monthly Returns -->
+    <section id="section-monthly" class="report-section hidden">
+      <h2>Monthly Returns (21 trading days)</h2>
+      <p class="section-desc">
+        Distribution of all 21-day rolling returns since 1956. Vertical lines show the last 4 non-overlapping 21-day SPY windows.
+      </p>
+      <div id="monthly-stats" class="stats-strip"></div>
+      <div class="chart-container" style="height:360px;">
+        <canvas id="monthly-chart"></canvas>
+      </div>
+      <div id="monthly-table-wrap"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Based on S&P 500 daily price history (1956–present) and recent SPY quotes. Past performance does not guarantee future results. This is not financial advice.</p>
+  </footer>
+
+  <script src="js/charts.js"></script>
+  <script src="js/recent_returns_app.js"></script>
+</body>
+</html>

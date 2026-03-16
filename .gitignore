@@ -8,3 +8,4 @@ logs/
 .coverage
 out_data/
 trading_strategies_report/data/
+.envrc

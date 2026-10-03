@@ -48,8 +48,9 @@ poetry run python bin/runner.py
 ```
 
 Dispatches 225 tasks via `multiprocessing.Pool`, one per (years, model) combination.
-Each worker loads data independently and writes a CSV to `./out_data/`. Logs go to `app1.log`.
-Runtime is typically 15–30 minutes depending on core count.
+Each worker loads data independently and writes a CSV to `./out_data/`. Warnings go to `app1.log`; pass `--log-level INFO` (or `DEBUG`) for a per-trade trace, but expect a very large log (tens to hundreds of GB for a full run).
+Each window stops reading data once its last trade is made. Insurance variants trade daily and
+dominate the runtime; the long-horizon (15-year) Insurance tasks take several minutes each.
 
 ### Generate summary statistics
 
@@ -86,7 +87,7 @@ static strategy description pages for each of the three strategy families.
 poetry run pytest --cov=returns --cov-report=term-missing tests/
 ```
 
-56 tests, ~75% coverage.
+60 tests, ~76% coverage.
 
 ### Compute 30-day rolling returns
 
@@ -145,7 +146,10 @@ sp500-historical-portfolio-returns/
 │   ├── test_insurance_class.py
 │   ├── test_analysis.py
 │   ├── test_data.py
-│   └── test_monthly_returns.py
+│   ├── test_db.py
+│   ├── test_download_qqq.py
+│   ├── test_monthly_returns.py
+│   └── test_runner.py         # model_tester early exit vs full scan
 ├── data/
 │   ├── SP500.tab              # Daily OHLCV + Adj Close (Aug 1956 – Mar 2026)
 │   ├── QQQ.tab                # QQQ daily OHLCV, same layout (Mar 1999 – )

@@ -7,14 +7,6 @@ import returns.data
 from returns.data import *
 from returns.models import *
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(process)d|%(asctime)s|%(levelname)s|%(funcName)20s()|%(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S',
-                    filename='app1.log',
-                    filemode='w')
-
-
 def model_tester(model, data, years=10, price_index=None):
     """
     Tests the given model on the provided data for the specified number of years.
@@ -43,13 +35,16 @@ def model_tester(model, data, years=10, price_index=None):
                 # data is (stock price, interest rate by years)
                 _data = (d[price_index], d[combined_interest_index])
                 skip_to_date = model.trade(d[0], _data)
+                if not model.last_trigger:
+                    # last trade of this window is done; the rest of the data can't affect it
+                    break
 
         for log_line in model.status():
             logging.debug(log_line)
 
         model_returns.append(model.total_returns())
         logging.debug((f"frac_returns={model_returns[-1][1]:5.2%} yearly_return_rate={model_returns[-1][2]}"
-                       "model={model.name} start_date={test_start_date}"))
+                       f" model={model.model_name} start_date={test_start_date}"))
         test_start_date += test_interval
 
     logging.info("End model testing")
@@ -89,7 +84,15 @@ def model_test_worker(years: int, class_name: str, model_kwargs: dict, date_str:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run the full backtest grid.")
     parser.add_argument("--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)")
+    parser.add_argument("--log-level", default="WARNING",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                        help="log level for app1.log (DEBUG/INFO log every trade and can reach 100s of GB)")
     args = parser.parse_args()
+    logging.basicConfig(level=args.log_level,
+                        format='%(process)d|%(asctime)s|%(levelname)s|%(funcName)20s()|%(message)s',
+                        datefmt='%Y-%m-%d %H:%M:%S',
+                        filename='app1.log',
+                        filemode='w')
     use_dataset(args.dataset)
     Path(returns.data.out_data_path).mkdir(parents=True, exist_ok=True)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")

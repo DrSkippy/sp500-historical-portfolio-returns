@@ -3,15 +3,28 @@
 ## Project: sp500-historical-portfolio-returns
 
 Backtests three portfolio strategies (Buy&Hold, KellyModel, InsuranceModel) across the full
-S&P 500 daily price history. The core module is `returns/`. Scripts live in `bin/`.
+S&P 500 daily price history, and the same analysis on QQQ. Datasets are defined under
+`datasets:` in `config.yaml` and selected with `--dataset`. The core module is `returns/`.
+Scripts live in `bin/`.
 
-### Running tests
+### Running tests and checks
 
 ```bash
 poetry run pytest --cov=returns --cov-report=term-missing tests/
+poetry run black --check .
+poetry run mypy            # strict; config in pyproject.toml covers returns/, bin/, tests/
 ```
 
 Tests live in `tests/` (with an `s`). Use `poetry run python ...` — never bare `python`.
+Use explicit imports, not `from x import *` (strict mypy can't follow star imports).
+
+### Report deployment
+
+The report site (`trading_strategies_report/`) is published to GitHub Pages at
+https://drskippy.github.io/sp500-historical-portfolio-returns/ from an orphan `gh-pages` branch
+holding only the site plus its generated `data/*.json` (gitignored on `main`). See
+"Deploy the report site" in README.md for the commands. Generated data files stay off `main`;
+only `gh-pages` carries them.
 
 ### Testing principles
 
@@ -43,15 +56,22 @@ Tests live in `tests/` (with an `s`). Use `poetry run python ...` — never bare
 ```
 returns/
   models.py          # Model, KellyModel, InsuranceModel
-  data.py            # I/O: get_sp500_data, get_interest_data, get_combined_sp500_interest_data
+  data.py            # I/O: use_dataset, get_sp500_data, get_interest_data, get_combined_sp500_interest_data
   db.py              # PostgreSQL access (get_db_settings, get_quotes); settings from .envrc PG* vars
   analysis.py        # aggregate_returns, calculate_mode, get_aggregate_returns_by_period
   monthly_returns.py # MonthlyReturns (30-day rolling returns, formula: (cur-prior)/cur)
 bin/
-  runner.py          # Backtest entry point; model_tester, model_test_worker, all_model_specs
-  transform_new_sp500_records.py
-data/                # Raw SP500.tab and interest.tab (tab-separated)
-out_data/            # CSV output from backtest runs
+  runner.py                  # Backtest entry point; model_tester, model_test_worker, all_model_specs
+  summarize.py               # Aggregate backtest CSVs into summary_*.csv / total_returns_*.json
+  generate_report.py         # Build trading_strategies_report/data/report_data*.json
+  generate_recent_returns.py # Build recent_returns_data*.json (SPY from PostgreSQL, QQQ from file)
+  download_qqq.py            # Fetch QQQ history from Yahoo Finance into data/QQQ.tab
+  get_monthly_returns.py     # 30-day rolling returns to out_data/monthly_returns.csv
+  transform_new_sp500_records.py  # stdin: pasted Seeking Alpha rows -> SP500.tab format
+data/                # SP500.tab, QQQ.tab, interest.tab (tab-separated)
+out_data/            # Backtest output (out_data/qqq/ for QQQ); gitignored
+trading_strategies_report/   # Static report site, deployed via gh-pages
+config.yaml          # Dataset definitions (paths, price column, report/recent-data files)
 ```
 
 ---

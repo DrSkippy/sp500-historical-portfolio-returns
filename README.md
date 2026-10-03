@@ -3,7 +3,11 @@
 A backtesting framework that tests three portfolio strategies across the full S&P 500 daily
 price history (August 1956 – March 2026, ~17,500 trading days). Strategies are run across
 every 3-day-strided start date for holding periods of 1–15 years, producing statistical
-distributions of returns rather than point estimates.
+distributions of returns rather than point estimates. The same analysis also runs on QQQ
+(Nasdaq-100, March 1999 – present).
+
+**Live report:** https://drskippy.github.io/sp500-historical-portfolio-returns/ (S&P 500 / QQQ
+switch in the header). See [Deploy the report site](#deploy-the-report-site).
 
 ## Strategies
 
@@ -41,6 +45,26 @@ PostgreSQL cluster (`192.168.1.91:5434`, table `quotes`).
 
 All commands use `poetry run` — never invoke `python` directly.
 
+### Datasets (`config.yaml`)
+
+`runner.py`, `summarize.py`, `generate_report.py` and `generate_recent_returns.py` take
+`--dataset <name>`, selecting an entry under `datasets:` in `config.yaml` (default `sp500`;
+also `qqq`). Each entry defines:
+
+| Key | Used by | Meaning |
+|---|---|---|
+| `price_path` | all | Tab-separated daily price file |
+| `price_column` | all | Column traded by the models (`"Adj Close**"` for S&P 500, `"Close*"` for QQQ) |
+| `combined_path` | `summarize.py` | Price + interest-rate CSV written as a by-product |
+| `out_dir` | `runner.py`, `summarize.py`, `generate_report.py` | Backtest output directory |
+| `report_data` | `generate_report.py` | Report JSON written to `trading_strategies_report/data/` |
+| `label` | `generate_recent_returns.py` | Display name on the recent-returns page |
+| `recent_source` | `generate_recent_returns.py` | `db` (PostgreSQL `quotes` table) or `file` (tail of `price_path`) |
+| `recent_symbol` | `generate_recent_returns.py` | Ticker for recent quotes (`SPY`, `QQQ`) |
+| `recent_data` | `generate_recent_returns.py` | Recent-returns JSON written to `trading_strategies_report/data/` |
+
+Database credentials are never in `config.yaml`; they come from `.envrc` (see above).
+
 ### Run the full backtest
 
 ```bash
@@ -60,9 +84,10 @@ Run after the backtest to aggregate results:
 poetry run python bin/summarize.py
 ```
 
-Produces per-model summary CSVs and JSON files in `./out_data/`.
+Produces per-model summary CSVs and JSON files in `./out_data/`, and rewrites the dataset's
+`combined_path` CSV.
 
-### Generate the report site
+### Generate the report data
 
 Run after summarize.py to build the static report data file:
 
@@ -70,24 +95,62 @@ Run after summarize.py to build the static report data file:
 poetry run python bin/generate_report.py
 ```
 
-Reads all `out_data/summary_*.csv` and `out_data/total_returns_*.json` files and writes
-`trading_strategies_report/data/report_data.json` (~8 MB). To view the report locally:
+Reads the dataset's `out_dir/summary_*.csv` and `out_dir/total_returns_*.json` files and writes
+`trading_strategies_report/data/report_data.json` (~8 MB). When several backtest runs are
+present, the newest timestamp per model wins, so old runs can stay in `out_data/`.
+
+### Generate the recent-returns data
+
+```bash
+poetry run python bin/generate_recent_returns.py
+```
+
+Computes the historical daily/weekly/monthly return distributions and ranks the most recent
+returns against them, writing `trading_strategies_report/data/recent_returns_data.json`. For
+`sp500`, recent SPY quotes come from PostgreSQL (`recent_source: db`), so the `PG*` variables
+must be set in `.envrc`.
+
+### View the report locally
 
 ```bash
 cd trading_strategies_report && python3 -m http.server 8080
 ```
 
 Open `http://localhost:8080`. The site has six interactive sections (overview table, return
-curves, risk over time, distribution explorer, risk/return scatter, investment advice) plus
-static strategy description pages for each of the three strategy families.
+curves, risk over time, distribution explorer, risk/return scatter, investment advice), a
+recent-returns page (`recent_returns.html`), and static strategy description pages for each
+of the three strategy families. Add `?dataset=qqq` to either page for QQQ.
 
-### Run tests
+### Deploy the report site
+
+The site is published on GitHub Pages from an orphan **`gh-pages`** branch that holds only the
+contents of `trading_strategies_report/`, including the generated `data/*.json` files (which
+are gitignored on `main`). All site paths are relative, so it works unchanged under the
+`/sp500-historical-portfolio-returns/` project path. Pushing to `gh-pages` triggers a Pages
+rebuild (about a minute).
+
+After regenerating the report and recent-returns data for every dataset:
+
+```bash
+git worktree add /tmp/gh-pages gh-pages
+cp -r trading_strategies_report/. /tmp/gh-pages/
+cd /tmp/gh-pages
+git add -A && git commit -m "Update report data" && git push origin gh-pages
+cd - && git worktree remove /tmp/gh-pages
+```
+
+The branch keeps a `.nojekyll` file so GitHub serves the files as-is. Check the build with
+`gh api repos/DrSkippy/sp500-historical-portfolio-returns/pages/builds/latest`.
+
+### Run tests and code-quality checks
 
 ```bash
 poetry run pytest --cov=returns --cov-report=term-missing tests/
+poetry run black --check .
+poetry run mypy                 # strict mode; covers returns/, bin/ and tests/ (see pyproject.toml)
 ```
 
-60 tests, ~76% coverage.
+60 tests, ~76% coverage. `black` and `mypy --strict` must both pass before merge.
 
 ### Compute 30-day rolling returns
 
@@ -95,15 +158,22 @@ poetry run pytest --cov=returns --cov-report=term-missing tests/
 poetry run python bin/get_monthly_returns.py
 ```
 
-Calculates `(current - prior) / current` over a 30-day offset across the full price history.
+Calculates `(current - prior) / current` over a 30-day offset across the full price history
+and writes `out_data/monthly_returns.csv`.
 
 ### Update SP500 data
 
+`data/SP500.tab` is updated by hand; until it is, rerunning the S&P 500 backtest reproduces the
+previous results. Copy the new rows from the
+[Seeking Alpha historical quotes page](https://seekingalpha.com/symbol/SP500/historical-price-quotes)
+into a text file, then:
+
 ```bash
-poetry run python bin/transform_new_sp500_records.py
+poetry run python bin/transform_new_sp500_records.py < new_rows.txt
 ```
 
-Transforms newly downloaded SP500 records into the `.tab` format used by the data loader.
+The script reads the pasted rows on stdin and prints them in `.tab` format; prepend the output
+to `data/SP500.tab` (newest rows go first).
 
 ### Run the analysis on QQQ (Nasdaq-100)
 
@@ -119,8 +189,9 @@ poetry run python bin/generate_recent_returns.py --dataset qqq  # writes recent_
 ```
 
 View it at `http://localhost:8080/?dataset=qqq` and `recent_returns.html?dataset=qqq` (both
-headers have an S&P 500 / QQQ switch). For QQQ, the recent-returns page uses the tail of
-`data/QQQ.tab` instead of PostgreSQL, so re-run `download_qqq.py` to refresh it.
+headers have an S&P 500 / QQQ switch), then [deploy](#deploy-the-report-site). For QQQ, the
+recent-returns page uses the tail of `data/QQQ.tab` (`recent_source: file`) instead of
+PostgreSQL, so re-run `download_qqq.py` to refresh it.
 QQQ uses the split-adjusted `Close*` column (price return, no dividends), matching the
 S&P 500 price-index methodology; set `price_column: "Adj Close**"` to include dividends.
 
@@ -132,11 +203,13 @@ sp500-historical-portfolio-returns/
 │   ├── models.py              # Model, KellyModel, InsuranceModel
 │   ├── data.py                # Data loading and combination
 │   ├── analysis.py            # Aggregation and statistics
+│   ├── db.py                  # PostgreSQL access for recent quotes (PG* env vars)
 │   └── monthly_returns.py     # 30-day rolling return series
 ├── bin/
 │   ├── runner.py              # Main backtest entry point
 │   ├── summarize.py           # Post-process backtest output
-│   ├── generate_report.py     # Build report_data.json for the report site
+│   ├── generate_report.py     # Build report_data*.json for the report site
+│   ├── generate_recent_returns.py  # Build recent_returns_data*.json
 │   ├── get_monthly_returns.py # Rolling returns analysis
 │   ├── transform_new_sp500_records.py  # Data ingestion helper
 │   └── download_qqq.py        # Download QQQ history to data/QQQ.tab
@@ -154,18 +227,21 @@ sp500-historical-portfolio-returns/
 │   ├── SP500.tab              # Daily OHLCV + Adj Close (Aug 1956 – Mar 2026)
 │   ├── QQQ.tab                # QQQ daily OHLCV, same layout (Mar 1999 – )
 │   └── interest.tab           # Annual interest rates (bond return proxy)
-├── out_data/                  # Backtest output (generated, not committed)
-├── trading_strategies_report/ # Static HTML/JS report site
+├── out_data/                  # Backtest output, S&P 500 (generated, not committed)
+│   └── qqq/                   # Backtest output, QQQ
+├── trading_strategies_report/ # Static HTML/JS report site (deployed via gh-pages)
 │   ├── index.html             # Single-page interactive report (Chart.js)
+│   ├── recent_returns.html    # Recent returns vs historical distribution
 │   ├── css/style.css
-│   ├── js/                    # app.js, charts.js
+│   ├── js/                    # app.js, charts.js, recent_returns_app.js
 │   ├── strategies/            # buy-hold.html, kelly.html, insurance.html
-│   └── data/                  # report_data.json (generated, not committed)
+│   └── data/                  # report_data*.json, recent_returns_data*.json (generated, not committed)
 ├── notebooks/                 # Exploratory Jupyter notebooks
 ├── .claude/agents/
 │   └── test-runner.md         # Claude Code subagent that runs the test suite
 ├── config.yaml                # Dataset definitions
-└── pyproject.toml
+├── .envrc.example             # PG* database variables template (copy to .envrc)
+└── pyproject.toml             # Dependencies plus black and mypy (strict) settings
 ```
 
 ## Data
@@ -185,10 +261,10 @@ sp500-historical-portfolio-returns/
 - Date format: `YYYY-01-01`; values are plain percentages (e.g. `1.05` = 1.05% annual yield)
 - Used as the bond/cash return proxy in Kelly and Insurance models
 
-**Output files** (written to `./out_data/` by the backtest runner):
-- `returns_{years}_{model_name}_{timestamp}.csv` — per-start-date results
-- `summary_{suffix}.csv` — aggregated stats (mean, median, stdev, mode, fraction losing)
-- `total_returns_{suffix}.json` — full return distribution for histogram plots
+**Output files** (written to the dataset's `out_dir`: `./out_data/` or `./out_data/qqq/`):
+- `returns_{years}_{model_name}_{timestamp}.csv` — per-start-date results (`runner.py`)
+- `summary_{model_name}_{timestamp}.csv` — aggregated stats (mean, median, stdev, mode, fraction losing) (`summarize.py`)
+- `total_returns_{model_name}_{timestamp}.json` — full return distribution for histogram plots (`summarize.py`)
 
 ## Strategy details
 
@@ -239,4 +315,7 @@ For each (model, holding period) combination the framework computes:
 | `psycopg[binary]` | ^3.3 | PostgreSQL access for recent quotes |
 | `pytest` | ^9.1 | Test framework (`dev` group) |
 | `pytest-cov` | ^7.1 | Coverage reporting (`dev` group) |
+| `black` | ^26.5 | Code formatter (`dev` group) |
+| `mypy` | ^2.4 | Static type checking, strict mode (`dev` group) |
+| `pandas-stubs`, `types-requests`, `types-pyyaml` | — | Type stubs for mypy (`dev` group) |
 | `notebook` | ^7.6 | Exploratory notebooks (`notebook` group) |

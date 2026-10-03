@@ -44,6 +44,7 @@ Tests live in `tests/` (with an `s`). Use `poetry run python ...` — never bare
 returns/
   models.py          # Model, KellyModel, InsuranceModel
   data.py            # I/O: get_sp500_data, get_interest_data, get_combined_sp500_interest_data
+  db.py              # PostgreSQL access (get_db_settings, get_quotes); settings from .envrc PG* vars
   analysis.py        # aggregate_returns, calculate_mode, get_aggregate_returns_by_period
   monthly_returns.py # MonthlyReturns (30-day rolling returns, formula: (cur-prior)/cur)
 bin/
@@ -113,27 +114,19 @@ project-root/
 
 | Service       | Host                | Port  | Notes                          |
 |---------------|---------------------|-------|--------------------------------|
-| MySQL         | `192.168.1.91`      | 3306  | Primary database               |
-| Ollama (LLM)  | `192.168.1.90`      | 11434 | Local LLM inference server     |
+| PostgreSQL    | `192.168.1.91`      | 5434  | Primary database (`stock_quotes`, etc.) |
+| MySQL         | `192.168.1.91`      | 3306  | Legacy (e.g. weewx)            |
+| LM Studio (LLM) | `192.168.1.90`    | 1234  | Local LLM server, OpenAI-compatible (`/v1`) |
 
-- **MySQL** is the default database. Use `PyMySQL` or `mysqlclient` as the driver. SQLAlchemy is fine as an ORM when appropriate.
-- **Ollama** provides local LLM access. Base URL: `http://192.168.1.90:11434/`
-  - Use the Ollama REST API or the `ollama` Python client library.
+- **PostgreSQL** is the default database. Use `psycopg` (v3) as the driver. SQLAlchemy is fine as an ORM when appropriate.
+  In this repo, `returns/db.py` reads `PGHOST`/`PGPORT`/`PGUSER`/`PGPASSWORD`/`PGDATABASE` from `.envrc` — never hardcode connection defaults.
+- **LM Studio** provides local LLM access via an OpenAI-compatible API. Base URL: `http://192.168.1.90:1234/v1`
+  (Ollama on port 11434 is retired).
+  - Requests need `Authorization: Bearer $LM_API_TOKEN`; keep the token in `.envrc`, never in code or config.
+  - Use `/v1/chat/completions` with `response_format` (`json_schema`) for structured output.
   - Prefer local models over external API calls when feasible.
   - **Always validate LLM responses with Pydantic models.** Define expected response schemas as Pydantic classes and parse LLM output through them before use.
-  - Available models:
-
-    | Model                  | Size   | Use Case                                      |
-    |------------------------|--------|-----------------------------------------------|
-    | `llama4:latest`        | 67 GB  | Large general-purpose reasoning                |
-    | `gpt-oss:latest`       | 13 GB  | General-purpose                                |
-    | `phi4:latest`          | 9.1 GB | Strong mid-size reasoning                      |
-    | `deepseek-ocr:latest`  | 6.7 GB | OCR and document extraction                    |
-    | `deepseek-r1:latest`   | 5.2 GB | Reasoning tasks                                |
-    | `qwen3:latest`         | 5.2 GB | General-purpose, multilingual                  |
-    | `gemma3:latest`        | 3.3 GB | Lightweight general-purpose                    |
-    | `deepseek-coder:latest`| 776 MB | Code generation and completion                 |
-    | `mxbai-embed-large:latest` | 669 MB | Text embeddings (not generative)          |
+  - List the currently loaded models with `GET /v1/models`. This repo's test agent uses `openai/gpt-oss-20b`.
 
   - Specify the model name in `config.yaml` so it's easily swappable. Choose the smallest model that fits the task.
 
@@ -153,7 +146,7 @@ project-root/
 
 - **Flask API template**: Use Blueprints for route organization. Load config from `config.yaml` at startup. Health check endpoint at `/health`.
 - **Database connections**: Load credentials from environment variables (via `.envrc`). Use connection pooling.
-- **LLM integration**: Point to Ollama at `http://192.168.1.90:11434/`. Specify model name in `config.yaml` so it's easily swappable. Always define a Pydantic model for expected LLM output and validate responses through it.
+- **LLM integration**: Point to LM Studio at `http://192.168.1.90:1234/v1` with the `LM_API_TOKEN` bearer token from `.envrc`. Specify model name in `config.yaml` so it's easily swappable. Always define a Pydantic model for expected LLM output and validate responses through it.
 - **CLI tools in `bin/`**: Use `argparse` or `click`. Make them executable and ensure they work within the Poetry virtualenv (`poetry run`).
 
 ### Git Practices

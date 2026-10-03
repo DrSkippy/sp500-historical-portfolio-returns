@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """
-Ollama-powered unit testing agent.
+LLM-powered unit testing agent.
 
-Runs pytest, then — on any failure — queries a local Ollama LLM for a
-structured analysis of root causes and suggested fixes.
+Runs pytest, then — on any failure — queries the local LM Studio server
+(OpenAI-compatible API) for a structured analysis of root causes and
+suggested fixes.
+
+The API token is read from the LM_API_TOKEN environment variable (set in
+.envrc, loaded by direnv). Server URL and model are in config.yaml.
 
 Usage:
     poetry run python bin/test_agent.py
-    poetry run python bin/test_agent.py --model gemma3:latest
+    poetry run python bin/test_agent.py --model qwen/qwen3-coder-30b
     poetry run python bin/test_agent.py --pytest-args "-k test_analysis -v"
 """
 
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,10 +31,12 @@ from pydantic import BaseModel, ValidationError
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
+API_TOKEN_ENV = "LM_API_TOKEN"
 
 _DEFAULTS: dict[str, Any] = {
-    "ollama_base_url": "http://192.168.1.90:11434",
-    "model": "phi4:latest",
+    "llm_base_url": "http://192.168.1.90:1234/v1",
+    "model": "openai/gpt-oss-20b",
+    "request_timeout": 300,
     "pytest_command": [
         "poetry", "run", "pytest",
         "--cov=returns", "--cov-report=term-missing",
@@ -40,7 +47,7 @@ _DEFAULTS: dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
-# Pydantic schema – Ollama must return JSON matching this shape
+# Pydantic schema – the LLM must return JSON matching this shape
 # ---------------------------------------------------------------------------
 
 class TestAnalysis(BaseModel):
@@ -87,7 +94,7 @@ def run_tests(command: list[str], extra_args: list[str]) -> tuple[int, str]:
 
 
 # ---------------------------------------------------------------------------
-# Ollama integration
+# LM Studio integration (OpenAI-compatible chat completions)
 # ---------------------------------------------------------------------------
 
 def _build_prompt(test_output: str) -> str:
@@ -109,36 +116,53 @@ PYTEST OUTPUT:
 """
 
 
-def query_ollama(base_url: str, model: str, prompt: str) -> TestAnalysis:
+def query_llm(
+    base_url: str, model: str, prompt: str, api_key: str, timeout: int = 300
+) -> TestAnalysis:
     """
-    Send the prompt to Ollama and parse the response into a TestAnalysis.
+    Send the prompt to LM Studio and parse the response into a TestAnalysis.
 
-    Uses Ollama's ``format`` field with the Pydantic JSON schema to force
-    structured output, guaranteeing valid JSON from the model.
+    Uses the OpenAI-style ``response_format`` with the Pydantic JSON schema to
+    force structured output.
 
     Args:
-        base_url: Ollama server base URL (e.g. ``http://192.168.1.90:11434``).
-        model: Model name (e.g. ``phi4:latest``).
+        base_url: OpenAI-compatible base URL (e.g. ``http://192.168.1.90:1234/v1``).
+        model: Model name (e.g. ``openai/gpt-oss-20b``).
         prompt: The prompt text to send.
+        api_key: LM Studio API token, sent as a Bearer token.
+        timeout: Request timeout in seconds.
 
     Returns:
         Validated TestAnalysis instance.
 
     Raises:
-        requests.HTTPError: If the Ollama request fails.
+        requests.HTTPError: If the request fails (e.g. 401 for a bad token).
         ValidationError: If the model response doesn't match the schema.
     """
     payload = {
         "model": model,
-        "prompt": prompt,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0,
         "stream": False,
-        "format": TestAnalysis.model_json_schema(),
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "test_analysis",
+                "strict": True,
+                "schema": TestAnalysis.model_json_schema(),
+            },
+        },
     }
-    logger.debug("POST %s/api/generate model=%s", base_url, model)
-    resp = requests.post(f"{base_url}/api/generate", json=payload, timeout=120)
+    logger.debug("POST %s/chat/completions model=%s", base_url, model)
+    resp = requests.post(
+        f"{base_url}/chat/completions",
+        json=payload,
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=timeout,
+    )
     resp.raise_for_status()
 
-    raw_text: str = resp.json()["response"]
+    raw_text: str = resp.json()["choices"][0]["message"]["content"]
     logger.debug("Raw LLM response: %s", raw_text[:500])
 
     try:
@@ -188,11 +212,11 @@ def _print_analysis(analysis: TestAnalysis, model: str) -> None:
 def main() -> int:
     """Run the test agent. Returns the pytest exit code."""
     parser = argparse.ArgumentParser(
-        description="Ollama-powered pytest runner — runs tests and analyses failures with a local LLM.",
+        description="LLM-powered pytest runner — runs tests and analyses failures with a local LLM.",
     )
     parser.add_argument(
         "--model",
-        help="Override the Ollama model from config.yaml",
+        help="Override the LLM model from config.yaml",
     )
     parser.add_argument(
         "--pytest-args",
@@ -219,7 +243,8 @@ def main() -> int:
 
     cfg = load_config()
     model: str = args.model or cfg["model"]
-    base_url: str = cfg["ollama_base_url"]
+    base_url: str = cfg["llm_base_url"]
+    timeout: int = cfg["request_timeout"]
     pytest_command: list[str] = cfg["pytest_command"]
     max_chars: int = cfg["max_context_chars"]
     extra_args: list[str] = args.pytest_args.split() if args.pytest_args else []
@@ -239,14 +264,19 @@ def main() -> int:
     if len(output) > max_chars:
         logger.debug("Output trimmed from %d to %d chars for LLM context.", len(output), max_chars)
 
+    api_key = os.environ.get(API_TOKEN_ENV)
+    if not api_key:
+        logger.error("%s is not set — add it to .envrc and run `direnv allow`.", API_TOKEN_ENV)
+        return exit_code
+
     logger.info("Tests failed — querying %s at %s for analysis...", model, base_url)
     try:
-        analysis = query_ollama(base_url, model, _build_prompt(context))
+        analysis = query_llm(base_url, model, _build_prompt(context), api_key, timeout)
         _print_analysis(analysis, model)
     except requests.exceptions.ConnectionError:
-        logger.error("Cannot reach Ollama at %s — is the server running?", base_url)
+        logger.error("Cannot reach LM Studio at %s — is the server running?", base_url)
     except requests.HTTPError as exc:
-        logger.error("Ollama request failed: %s", exc)
+        logger.error("LM Studio request failed: %s", exc)
     except (ValidationError, ValueError, json.JSONDecodeError) as exc:
         logger.error("Could not parse LLM response: %s", exc)
 

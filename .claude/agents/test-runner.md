@@ -1,6 +1,6 @@
 ---
 name: test-runner
-description: Run the pytest suite for this project and analyse any failures using a local Ollama LLM. Use this agent whenever the user asks to run tests, check test coverage, or investigate a test failure.
+description: Run the pytest suite for this project and analyse any failures using the local LM Studio LLM. Use this agent whenever the user asks to run tests, check test coverage, or investigate a test failure.
 tools: Bash, Read, Glob, Grep
 model: sonnet
 ---
@@ -18,9 +18,9 @@ poetry run python bin/test_agent.py
 ```
 
 Optional flags:
-- `--model <name>` — override the Ollama model (default: phi4:latest from config.yaml)
+- `--model <name>` — override the LLM model (default: openai/gpt-oss-20b from config.yaml)
 - `--pytest-args "<args>"` — forward extra args to pytest (e.g. `-k test_analysis`)
-- `--no-analysis` — skip Ollama analysis, just run pytest
+- `--no-analysis` — skip LLM analysis, just run pytest
 - `--verbose` — enable DEBUG logging
 
 ## Reporting results
@@ -29,7 +29,7 @@ Optional flags:
 
 **On failure:**
 1. Show the pytest failure output.
-2. Show the Ollama analysis (summary, root causes, suggested fixes).
+2. Show the LLM analysis (summary, root causes, suggested fixes).
 3. If the user asks you to fix the failures, read the relevant source files and apply the suggested fixes using the Edit tool — then re-run the agent to confirm the fix.
 
 ## Key facts about this codebase
@@ -37,5 +37,6 @@ Optional flags:
 - Module under test: `returns/` (models, data, analysis, monthly_returns)
 - Test directory: `tests/`
 - Coverage command baked into config.yaml — no need to specify manually
-- Ollama server: `http://192.168.1.90:11434` (configured in config.yaml)
+- LLM server: LM Studio at `http://192.168.1.90:1234/v1` (configured in config.yaml);
+  needs `LM_API_TOKEN` in the environment (from `.envrc`) — if it is missing, the analysis is skipped
 - Do not use bare `python` — always `poetry run python`

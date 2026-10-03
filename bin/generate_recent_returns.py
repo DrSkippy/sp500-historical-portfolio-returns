@@ -2,7 +2,7 @@
 generate_recent_returns.py
 
 Reads a dataset's historical prices (default: S&P 500, SP500.tab) and its recent
-quotes (SPY from MySQL, or the tail of the price file), computes daily/weekly/monthly
+quotes (SPY from PostgreSQL, or the tail of the price file), computes daily/weekly/monthly
 return distributions, and writes trading_strategies_report/data/<recent_data>.json.
 
 Usage:
@@ -15,18 +15,12 @@ import os
 import sys
 from datetime import date, datetime
 
-import pymysql
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import returns.data
 from returns.data import get_sp500_data, use_dataset
+from returns.db import get_db_settings, get_quotes
 
 OUTPUT_DIR = "trading_strategies_report/data"
-
-MYSQL_HOST = os.environ.get("MYSQL_HOST", "192.168.1.91")
-MYSQL_USER = os.environ.get("MYSQL_USER", "scott")
-MYSQL_PASS = os.environ.get("MYSQL_PASSWORD") or os.environ.get("DB_PASS", "123_ss_merploft")
-MYSQL_DB = "stock_quotes"
 
 
 def compute_returns(prices, window):
@@ -68,29 +62,6 @@ def percentile_rank(hist_values, recent_value):
     """Fraction of historical values strictly less than recent_value, * 100."""
     count = sum(1 for v in hist_values if v < recent_value)
     return count / len(hist_values) * 100.0
-
-
-def get_spy_from_mysql(symbol="SPY"):
-    """Query closing prices for symbol from MySQL, sorted ascending by date."""
-    conn = pymysql.connect(
-        host=MYSQL_HOST,
-        user=MYSQL_USER,
-        password=MYSQL_PASS,
-        database=MYSQL_DB,
-        cursorclass=pymysql.cursors.DictCursor,
-    )
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT date, close FROM quotes "
-                "WHERE symbol=%s AND namespace='NASDAQ' "
-                "ORDER BY date ASC",
-                (symbol,),
-            )
-            rows = cur.fetchall()
-    finally:
-        conn.close()
-    return [(row["date"], float(row["close"])) for row in rows]
 
 
 def build_recent_entries(dated_prices, window, n_recent, hist_values):
@@ -151,9 +122,10 @@ def main():
     print(f"  Historical: {len(hist_daily)} daily, {len(hist_weekly)} weekly, {len(hist_monthly)} monthly")
 
     # ── 2. Recent quotes ────────────────────────────────────────────────────
-    if cfg["recent_source"] == "mysql":
-        print(f"Connecting to MySQL at {MYSQL_HOST}...")
-        spy_rows = get_spy_from_mysql(symbol)
+    if cfg["recent_source"] == "db":
+        db = get_db_settings()
+        print(f"Connecting to PostgreSQL at {db['host']}:{db['port']}/{db['dbname']}...")
+        spy_rows = get_quotes(symbol)
     else:
         spy_rows = [(row[0].date(), row[returns.data.sp500_index]) for row in sp500_data]
     print(f"  {len(spy_rows)} {symbol} rows loaded (latest: {spy_rows[-1][0] if spy_rows else 'none'})")

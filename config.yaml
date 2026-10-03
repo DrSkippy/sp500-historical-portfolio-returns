@@ -1,6 +1,8 @@
 test_agent:
-  ollama_base_url: "http://192.168.1.90:11434"
-  model: "phi4:latest"
+  # LM Studio (OpenAI-compatible); API token comes from LM_API_TOKEN in .envrc
+  llm_base_url: "http://192.168.1.90:1234/v1"
+  model: "openai/gpt-oss-20b"
+  request_timeout: 300
   pytest_command:
     - poetry
     - run
@@ -24,8 +26,8 @@ datasets:
     report_data: report_data.json
     price_column: "Adj Close**"
     label: "S&P 500"
-    # generate_recent_returns.py: recent quotes come from MySQL (stock_quotes.quotes) for this symbol
-    recent_source: mysql
+    # generate_recent_returns.py: recent quotes come from PostgreSQL (quotes table; PG* vars in .envrc)
+    recent_source: db
     recent_symbol: SPY
     recent_data: recent_returns_data.json
   qqq:

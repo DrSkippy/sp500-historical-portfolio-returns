@@ -27,7 +27,15 @@ distributions of returns rather than point estimates.
 git clone <repository-url>
 cd sp500-historical-portfolio-returns
 poetry install
+cp .envrc.example .envrc   # fill in PGPASSWORD etc., then:
+direnv allow
 ```
+
+Database settings (used only by `bin/generate_recent_returns.py` for recent SPY quotes) are read
+from the standard PostgreSQL variables `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` and `PGDATABASE`,
+set in `.envrc` (gitignored) and loaded by direnv. There are no defaults in code; a missing
+variable raises a clear error. The quotes live in the `stock_quotes` database on the home-lab
+PostgreSQL cluster (`192.168.1.91:5434`, table `quotes`).
 
 ## Usage
 
@@ -78,7 +86,7 @@ static strategy description pages for each of the three strategy families.
 poetry run pytest --cov=returns --cov-report=term-missing tests/
 ```
 
-43 tests, ~72% coverage. Or use the Ollama-powered test agent (see below).
+43 tests, ~72% coverage. Or use the LLM-powered test agent (see below).
 
 ### Compute 30-day rolling returns
 
@@ -111,21 +119,21 @@ poetry run python bin/generate_recent_returns.py --dataset qqq  # writes recent_
 
 View it at `http://localhost:8080/?dataset=qqq` and `recent_returns.html?dataset=qqq` (both
 headers have an S&P 500 / QQQ switch). For QQQ, the recent-returns page uses the tail of
-`data/QQQ.tab` instead of MySQL, so re-run `download_qqq.py` to refresh it.
+`data/QQQ.tab` instead of PostgreSQL, so re-run `download_qqq.py` to refresh it.
 QQQ uses the split-adjusted `Close*` column (price return, no dividends), matching the
 S&P 500 price-index methodology; set `price_column: "Adj Close**"` to include dividends.
 
-## Test agent (Ollama-powered)
+## Test agent (LLM-powered)
 
-`bin/test_agent.py` runs pytest and, on any failure, queries a local Ollama LLM for a
+`bin/test_agent.py` runs pytest and, on any failure, queries the local LM Studio server for a
 structured analysis of root causes and suggested fixes.
 
 ```bash
-# Run tests + Ollama analysis on failure
+# Run tests + LLM analysis on failure
 poetry run python bin/test_agent.py
 
-# Use a lighter model
-poetry run python bin/test_agent.py --model gemma3:latest
+# Use a different loaded model
+poetry run python bin/test_agent.py --model qwen/qwen3-coder-30b
 
 # Target specific tests
 poetry run python bin/test_agent.py --pytest-args "-k test_data"
@@ -141,10 +149,14 @@ Configuration is in `config.yaml`:
 
 ```yaml
 test_agent:
-  ollama_base_url: "http://192.168.1.90:11434"
-  model: "phi4:latest"
+  llm_base_url: "http://192.168.1.90:1234/v1"   # LM Studio, OpenAI-compatible
+  model: "openai/gpt-oss-20b"
+  request_timeout: 300
   max_context_chars: 8000
 ```
+
+The API token is read from `LM_API_TOKEN` in `.envrc`; without it the agent still runs the
+tests but skips the analysis.
 
 ## Project structure
 
@@ -162,7 +174,7 @@ sp500-historical-portfolio-returns/
 │   ├── get_monthly_returns.py # Rolling returns analysis
 │   ├── transform_new_sp500_records.py  # Data ingestion helper
 │   ├── download_qqq.py        # Download QQQ history to data/QQQ.tab
-│   └── test_agent.py          # Ollama-powered test runner
+│   └── test_agent.py          # LLM-powered test runner (LM Studio)
 ├── tests/
 │   ├── test_model_class.py
 │   ├── test_kelly_model_class.py
@@ -184,7 +196,7 @@ sp500-historical-portfolio-returns/
 ├── notebooks/                 # Exploratory Jupyter notebooks
 ├── .claude/agents/
 │   └── test-runner.md         # Claude Code subagent definition
-├── config.yaml                # Test agent / Ollama settings and dataset definitions
+├── config.yaml                # Test agent (LM Studio) settings and dataset definitions
 └── pyproject.toml
 ```
 
@@ -255,8 +267,9 @@ For each (model, holding period) combination the framework computes:
 | `matplotlib` | ^3.8 | Plotting |
 | `seaborn` | ^0.13 | Statistical visualisation |
 | `pydantic` | ^2.12 | LLM response validation, data schemas |
-| `requests` | ^2.32 | Ollama HTTP API calls |
+| `requests` | ^2.32 | LM Studio / Yahoo Finance HTTP calls |
 | `pyyaml` | ^6.0 | Config file loading |
+| `psycopg[binary]` | ^3.3 | PostgreSQL access for recent quotes |
 | `pytest` | ^7.4 | Test framework |
 | `pytest-cov` | ^7.0 | Coverage reporting |
 | `jupyter` / `notebook` | ^7.0 | Exploratory notebooks |

@@ -1,0 +1,10 @@
+# Copy to .envrc, fill in values, then run `direnv allow`.
+# PostgreSQL (stock_quotes) — read by returns/db.py via standard libpq variables
+export PGHOST=192.168.1.91
+export PGPORT=5434
+export PGUSER=your_user
+export PGPASSWORD=your_password
+export PGDATABASE=stock_quotes
+export PYTHONPATH=$(pwd)
+# LM Studio (OpenAI-compatible LLM server) — used by bin/test_agent.py
+export LM_API_TOKEN=your_lm_studio_token

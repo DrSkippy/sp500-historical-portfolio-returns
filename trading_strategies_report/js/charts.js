@@ -61,10 +61,22 @@ function buildLineDatasets(models, yFn, familyTotals) {
       borderDash: isBuyHold ? [] : undefined,
       pointRadius: 3,
       tension: 0.3,
+      cubicInterpolationMode: "monotone",
       family: f,
       modelName: model.name,
     };
   });
+}
+
+/**
+ * Percent axis tick label with just enough decimals to keep adjacent ticks
+ * distinct (a 0.5% step would otherwise render as "7%, 7%, 8%, 8%").
+ */
+function pctTick(v, i, ticks) {
+  const raw = ticks.length > 1 ? Math.abs(ticks[1].value - ticks[0].value) * 100 : 1;
+  const step = Math.round(raw * 1e6) / 1e6; // strip float noise (0.1 can arrive as 0.0999...)
+  const decimals = Math.max(0, Math.min(2, Math.ceil(-Math.log10(step))));
+  return (v * 100).toFixed(decimals) + "%";
 }
 
 /** Human-readable label for a model. */
@@ -141,7 +153,7 @@ function createLineChart(canvasId, models, yFn, opts = {}) {
           ticks: {
             callback: opts.yFormat
               ? v => opts.yFormat(v)
-              : v => (v * 100).toFixed(0) + "%",
+              : pctTick,
           },
         },
       },
@@ -211,11 +223,11 @@ function createScatterChart(canvasId, models, year) {
       scales: {
         x: {
           title: { display: true, text: "Std Dev of Yearly Returns" },
-          ticks: { callback: v => (v * 100).toFixed(0) + "%" },
+          ticks: { callback: pctTick },
         },
         y: {
           title: { display: true, text: "Mean Annualized Return" },
-          ticks: { callback: v => (v * 100).toFixed(0) + "%" },
+          ticks: { callback: pctTick },
         },
       },
     },

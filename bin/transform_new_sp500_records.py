@@ -1,4 +1,5 @@
 import sys
+
 ##########################################################################################################
 # https://seekingalpha.com/symbol/SP500/historical-price-quotes
 # cut and paste new records to text file
@@ -9,10 +10,9 @@ import sys
 out = []
 for i, line in enumerate(sys.stdin):
     out.append(line.strip())
-    if (i+1)%3 == 0:
-        out[0] = out[0].replace(".","")
+    if (i + 1) % 3 == 0:
+        out[0] = out[0].replace(".", "")
         adj = out[1].split("\t")[3]
-        out[1] += "\t" + adj 
+        out[1] += "\t" + adj
         print("\t".join(out))
         out = []
-

@@ -25,7 +25,7 @@ def data():
     rows = []
     for i in range(3 * 365):
         # trend plus a ~10% swing every ~60 days so Insurance payouts and rebalances happen
-        price = 100 * (1.0003 ** i) * (1 + 0.1 * math.sin(i / 10))
+        price = 100 * (1.0003**i) * (1 + 0.1 * math.sin(i / 10))
         rows.append([start + datetime.timedelta(days=i), 0, 0, 0, 0, price, 0, 0.03])
     return rows
 
@@ -37,7 +37,9 @@ def reference_tester(model, data, years):
     out = []
     while test_start_date + datetime.timedelta(days=365 * years) < data[-1][0]:
         model.model_config(test_start_date, years=years)
-        start_idx = bisect.bisect_left(dates, test_start_date - runner.PADDING_TIME_DELTA)
+        start_idx = bisect.bisect_left(
+            dates, test_start_date - runner.PADDING_TIME_DELTA
+        )
         skip_to_date = None
         for d in data[start_idx:]:
             if skip_to_date is not None and d[0] < skip_to_date:
@@ -48,11 +50,14 @@ def reference_tester(model, data, years):
     return out
 
 
-@pytest.mark.parametrize("make_model", [
-    lambda: Model(),
-    lambda: KellyModel(bond_fract=0.2, rebalance_period=90),
-    lambda: InsuranceModel(insurance_frac=0.1, insurance_deductible=0.09),
-])
+@pytest.mark.parametrize(
+    "make_model",
+    [
+        lambda: Model(),
+        lambda: KellyModel(bond_fract=0.2, rebalance_period=90),
+        lambda: InsuranceModel(insurance_frac=0.1, insurance_deductible=0.09),
+    ],
+)
 def test_early_exit_matches_full_scan(data, make_model):
     got = runner.model_tester(make_model(), data, years=1, price_index=PRICE_IDX)
     want = reference_tester(make_model(), data, years=1)

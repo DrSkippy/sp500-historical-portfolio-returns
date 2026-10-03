@@ -32,7 +32,12 @@ def fetch_chart(symbol: str) -> dict[str, Any]:
     """Fetch the full daily chart history for a symbol from Yahoo Finance."""
     resp = requests.get(
         CHART_URL.format(symbol=symbol),
-        params={"period1": 0, "period2": 9999999999, "interval": "1d", "events": "div,split"},
+        params={
+            "period1": 0,
+            "period2": 9999999999,
+            "interval": "1d",
+            "events": "div,split",
+        },
         headers={"User-Agent": "Mozilla/5.0"},
         timeout=30,
     )
@@ -47,10 +52,18 @@ def chart_to_rows(chart: dict[str, Any]) -> list[list[str]]:
     adjclose = chart["indicators"]["adjclose"][0]["adjclose"]
     rows = []
     for i, ts in enumerate(chart["timestamp"]):
-        values = [quote["open"][i], quote["high"][i], quote["low"][i], quote["close"][i], adjclose[i]]
+        values = [
+            quote["open"][i],
+            quote["high"][i],
+            quote["low"][i],
+            quote["close"][i],
+            adjclose[i],
+        ]
         if any(v is None for v in values):
             continue  # skip incomplete days (e.g. partial current session)
-        date = datetime.datetime.fromtimestamp(ts + chart["meta"]["gmtoffset"], tz=datetime.timezone.utc)
+        date = datetime.datetime.fromtimestamp(
+            ts + chart["meta"]["gmtoffset"], tz=datetime.timezone.utc
+        )
         rows.append(
             [date.strftime("%b %d, %Y")]
             + [f"{v:.4f}" for v in values]
@@ -61,12 +74,16 @@ def chart_to_rows(chart: dict[str, Any]) -> list[list[str]]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--symbol", default="QQQ")
     parser.add_argument("--out", type=Path, default=Path("data/QQQ.tab"))
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
     rows = chart_to_rows(fetch_chart(args.symbol))
     with args.out.open("w") as f:
         f.write("\t".join(HEADER) + "\n")

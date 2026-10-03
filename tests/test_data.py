@@ -26,10 +26,7 @@ def sp500_file(tmp_path):
 
 @pytest.fixture
 def interest_file(tmp_path):
-    content = (
-        "observation_date\tGS1\n"
-        "2020-01-01\t1.50\n"
-    )
+    content = "observation_date\tGS1\n" "2020-01-01\t1.50\n"
     f = tmp_path / "interest.tab"
     f.write_text(content)
     return f
@@ -112,8 +109,13 @@ def dataset_config(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(returns.data, "config_path", str(cfg))
     # use_dataset mutates module globals; monkeypatch restores them after the test
-    for name in ["sp500_input_path", "combined_output_path", "out_data_path", "sp500_index",
-                 "combined_sp500_index"]:
+    for name in [
+        "sp500_input_path",
+        "combined_output_path",
+        "out_data_path",
+        "sp500_index",
+        "combined_sp500_index",
+    ]:
         monkeypatch.setattr(returns.data, name, getattr(returns.data, name))
     return tmp_path, prices
 
@@ -134,7 +136,9 @@ def test_use_dataset_selects_price_column(dataset_config, interest_file, monkeyp
     assert data[0][returns.data.combined_sp500_index] == pytest.approx(102.0)
 
 
-def test_create_combined_data_file_writes_dataset_path(dataset_config, interest_file, monkeypatch):
+def test_create_combined_data_file_writes_dataset_path(
+    dataset_config, interest_file, monkeypatch
+):
     tmp_path, _ = dataset_config
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     returns.data.use_dataset("qqq")

@@ -13,7 +13,10 @@ def calculate_mode(hist_data):
     Returns:
     float: The mode of the histogram.
     """
-    return (hist_data[1][np.argmax(hist_data[0])] + hist_data[1][np.argmax(hist_data[0]) - 1]) / 2
+    return (
+        hist_data[1][np.argmax(hist_data[0])]
+        + hist_data[1][np.argmax(hist_data[0]) - 1]
+    ) / 2
 
 
 def aggregate_returns(returns_data):
@@ -61,7 +64,7 @@ def aggregate_returns(returns_data):
         sdev_yearly_returns,
         fraction_losing_starts,
         mode_total_returns,
-        mode_yearly_returns
+        mode_yearly_returns,
     ), total_returns.tolist()
 
 
@@ -91,20 +94,23 @@ def get_aggregate_returns_by_period(data):
 
 
 def get_df_aggregate_returns_by_period(returns_stats_by_period):
-    df = pd.DataFrame(returns_stats_by_period, columns=[
-        "sample_size",
-        "time_span",
-        "model_name",
-        "mean_total_returns",
-        "mean_yearly_compound_returns",
-        "median_total_returns",
-        "median_yearly_returns",
-        "sdev_total_returns",
-        "sdev_yearly_returns",
-        "fraction_losing_starts",
-        "mode_total_returns",
-        "mode_yearly_returns"
-    ])
+    df = pd.DataFrame(
+        returns_stats_by_period,
+        columns=[
+            "sample_size",
+            "time_span",
+            "model_name",
+            "mean_total_returns",
+            "mean_yearly_compound_returns",
+            "median_total_returns",
+            "median_yearly_returns",
+            "sdev_total_returns",
+            "sdev_yearly_returns",
+            "fraction_losing_starts",
+            "mode_total_returns",
+            "mode_yearly_returns",
+        ],
+    )
     df = df.sort_values(by=["time_span"])
     return df
 
@@ -128,6 +134,7 @@ def plot_histograms(total_returns_by_period):
     for ax, (k, v) in zip(axs.reshape(-1), total_returns_by_period.items()):
         _ = ax.hist(v, bins=45)
         ax.set_title(f"Sample Returns {k}")
+
 
 def plot_period_comparison_data(drf):
     drf.plot.scatter("mean_total_returns", "model_name")

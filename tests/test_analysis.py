@@ -3,7 +3,11 @@ import datetime
 import numpy as np
 import pytest
 
-from returns.analysis import aggregate_returns, calculate_mode, get_aggregate_returns_by_period
+from returns.analysis import (
+    aggregate_returns,
+    calculate_mode,
+    get_aggregate_returns_by_period,
+)
 
 
 class TestCalculateMode:
@@ -19,7 +23,13 @@ class TestAggregateReturns:
     def _make_returns(self, n=5, time_span=1.0):
         values = [0.10, -0.05, 0.20, -0.10, 0.15]
         return [
-            [datetime.datetime(2020, 1, i + 1), values[i], values[i], time_span, "Model"]
+            [
+                datetime.datetime(2020, 1, i + 1),
+                values[i],
+                values[i],
+                time_span,
+                "Model",
+            ]
             for i in range(n)
         ]
 
@@ -46,7 +56,13 @@ class TestGetAggregateReturnsByPeriod:
     def _make_period_data(self, n=5, time_span=1.0):
         values = [0.10, -0.05, 0.20, -0.10, 0.15]
         return [
-            [datetime.datetime(2020, 1, i + 1), values[i], values[i], time_span, "Model"]
+            [
+                datetime.datetime(2020, 1, i + 1),
+                values[i],
+                values[i],
+                time_span,
+                "Model",
+            ]
             for i in range(n)
         ]
 

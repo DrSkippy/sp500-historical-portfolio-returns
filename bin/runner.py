@@ -7,6 +7,7 @@ import returns.data
 from returns.data import *
 from returns.models import *
 
+
 def model_tester(model, data, years=10, price_index=None):
     """
     Tests the given model on the provided data for the specified number of years.
@@ -43,8 +44,12 @@ def model_tester(model, data, years=10, price_index=None):
             logging.debug(log_line)
 
         model_returns.append(model.total_returns())
-        logging.debug((f"frac_returns={model_returns[-1][1]:5.2%} yearly_return_rate={model_returns[-1][2]}"
-                       f" model={model.model_name} start_date={test_start_date}"))
+        logging.debug(
+            (
+                f"frac_returns={model_returns[-1][1]:5.2%} yearly_return_rate={model_returns[-1][2]}"
+                f" model={model.model_name} start_date={test_start_date}"
+            )
+        )
         test_start_date += test_interval
 
     logging.info("End model testing")
@@ -62,12 +67,21 @@ def all_model_specs():
             yield ("InsuranceModel", {"insurance_frac": i, "insurance_deductible": j})
 
 
-def model_test_worker(years: int, class_name: str, model_kwargs: dict, date_str: str,
-                      dataset: str = "sp500") -> None:
+def model_test_worker(
+    years: int,
+    class_name: str,
+    model_kwargs: dict,
+    date_str: str,
+    dataset: str = "sp500",
+) -> None:
     """Worker that runs one (years, model) combination and writes results to CSV."""
     use_dataset(dataset)
     d, h = get_combined_sp500_interest_data()
-    model_classes = {"Model": Model, "KellyModel": KellyModel, "InsuranceModel": InsuranceModel}
+    model_classes = {
+        "Model": Model,
+        "KellyModel": KellyModel,
+        "InsuranceModel": InsuranceModel,
+    }
     m = model_classes[class_name](**model_kwargs)
     rets = model_tester(m, d, years=years)
 
@@ -76,23 +90,32 @@ def model_test_worker(years: int, class_name: str, model_kwargs: dict, date_str:
 
     with open(fn, "w") as outfile:
         writer = csv.writer(outfile)
-        writer.writerow(["date", "frac_return", "yearly_return_rate", "time_span", "model_name"])
+        writer.writerow(
+            ["date", "frac_return", "yearly_return_rate", "time_span", "model_name"]
+        )
         for r in rets:
             writer.writerow(r)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the full backtest grid.")
-    parser.add_argument("--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)")
-    parser.add_argument("--log-level", default="WARNING",
-                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                        help="log level for app1.log (DEBUG/INFO log every trade and can reach 100s of GB)")
+    parser.add_argument(
+        "--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)"
+    )
+    parser.add_argument(
+        "--log-level",
+        default="WARNING",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="log level for app1.log (DEBUG/INFO log every trade and can reach 100s of GB)",
+    )
     args = parser.parse_args()
-    logging.basicConfig(level=args.log_level,
-                        format='%(process)d|%(asctime)s|%(levelname)s|%(funcName)20s()|%(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S',
-                        filename='app1.log',
-                        filemode='w')
+    logging.basicConfig(
+        level=args.log_level,
+        format="%(process)d|%(asctime)s|%(levelname)s|%(funcName)20s()|%(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        filename="app1.log",
+        filemode="w",
+    )
     use_dataset(args.dataset)
     Path(returns.data.out_data_path).mkdir(parents=True, exist_ok=True)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")

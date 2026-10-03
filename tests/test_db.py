@@ -9,16 +9,26 @@ from returns.db import DB_ENV_VARS, get_db_settings, get_quotes
 
 @pytest.fixture
 def db_env(monkeypatch):
-    values = {"PGHOST": "db.example", "PGPORT": "5434", "PGUSER": "u", "PGPASSWORD": "p",
-              "PGDATABASE": "stock_quotes"}
+    values = {
+        "PGHOST": "db.example",
+        "PGPORT": "5434",
+        "PGUSER": "u",
+        "PGPASSWORD": "p",
+        "PGDATABASE": "stock_quotes",
+    }
     for k, v in values.items():
         monkeypatch.setenv(k, v)
     return values
 
 
 def test_get_db_settings_reads_env(db_env):
-    assert get_db_settings() == {"host": "db.example", "port": 5434, "user": "u", "password": "p",
-                                 "dbname": "stock_quotes"}
+    assert get_db_settings() == {
+        "host": "db.example",
+        "port": 5434,
+        "user": "u",
+        "password": "p",
+        "dbname": "stock_quotes",
+    }
 
 
 @pytest.mark.parametrize("var", DB_ENV_VARS)

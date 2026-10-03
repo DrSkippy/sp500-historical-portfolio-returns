@@ -3,6 +3,7 @@ import datetime
 import math
 from returns.models import Model
 
+
 class TestModel(unittest.TestCase):
 
     def setUp(self):
@@ -30,7 +31,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(self.model.shares, 100)
         self.assertEqual(self.model.capital, 0)
         self.assertEqual(len(self.model.trades), 1)
-        self.assertTupleEqual(self.model.trades[0], (date, [100,0], 100, 0, 100))
+        self.assertTupleEqual(self.model.trades[0], (date, [100, 0], 100, 0, 100))
 
     def test_last_trade(self):
         self.model.shares = 100
@@ -41,7 +42,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(self.model.shares, 0)
         self.assertEqual(self.model.capital, 10000)
         self.assertEqual(len(self.model.trades), 1)
-        self.assertTupleEqual(self.model.trades[0], (date, [100,0], -100, 10000, 0))
+        self.assertTupleEqual(self.model.trades[0], (date, [100, 0], -100, 10000, 0))
 
     def test_daily_trade(self):
         # Window 1 year
@@ -60,7 +61,8 @@ class TestModel(unittest.TestCase):
         # Daily trade does nothing except move to end of window, so no changes to model
         self.assertEqual(self.model.shares, _shares)
         self.assertEqual(self.model.capital, _capital)
-        self.assertEqual(len(self.model.trades),_len_trades)
+        self.assertEqual(len(self.model.trades), _len_trades)
+
     def test_trade_first(self):
         # Test the 'trade' method by simulating different scenarios
         # Example: self.model.trade(date, price)
@@ -75,7 +77,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(self.model.shares, 100)
         self.assertEqual(self.model.capital, 0)
         self.assertEqual(len(self.model.trades), 1)
-        self.assertTupleEqual(self.model.trades[0], (date, [100,0], 100, 0, 100))
+        self.assertTupleEqual(self.model.trades[0], (date, [100, 0], 100, 0, 100))
         self.assertFalse(self.model.first_trigger)
         self.assertTrue(self.model.last_trigger)
         self.assertIsNone(skip)
@@ -121,10 +123,14 @@ class TestModel(unittest.TestCase):
         price = [100, 0]  # Example price
         self.model.first_trade(date, price)
         self.assertEqual(len(self.model.status()), 2)
-        self.assertEqual(self.model.status()[1],
-                "2020-01-01 00:00:00,(    100.00,      0.00),    100.00,      0.00,    100.00")
-        self.assertEqual(self.model.status()[0],
-                "#### STATUS: Initial Capital=  10000.00 Capital=      0.00 Shares=    100.00 Trades=1")
+        self.assertEqual(
+            self.model.status()[1],
+            "2020-01-01 00:00:00,(    100.00,      0.00),    100.00,      0.00,    100.00",
+        )
+        self.assertEqual(
+            self.model.status()[0],
+            "#### STATUS: Initial Capital=  10000.00 Capital=      0.00 Shares=    100.00 Trades=1",
+        )
         print(" ".join(self.model.status()))
 
     def test_yearly_returns(self):
@@ -148,5 +154,6 @@ class TestModel(unittest.TestCase):
         self.assertAlmostEqual(result[3], 1)
         self.assertEqual(result[4], "Buy_Hold")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

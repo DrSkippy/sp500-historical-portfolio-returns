@@ -8,11 +8,14 @@ import os
 import pandas as pd
 import yaml
 
-from returns.analysis import get_aggregate_returns_by_period, get_df_aggregate_returns_by_period
+from returns.analysis import (
+    get_aggregate_returns_by_period,
+    get_df_aggregate_returns_by_period,
+)
 
 logger = logging.getLogger(__name__)
 
-locale.setlocale(locale.LC_ALL, '')
+locale.setlocale(locale.LC_ALL, "")
 
 sp500_input_path = "./data/SP500.tab"
 interest_input_path = "./data/interest.tab"
@@ -70,7 +73,7 @@ def get_interest_data():
             if not row:
                 continue
             year = datetime.datetime.strptime(row[0], "%Y-%m-%d").year
-            interest_data[year] = [float(x) / 100. for x in row[1:]]
+            interest_data[year] = [float(x) / 100.0 for x in row[1:]]
 
     # Debugging information
     logger.info(f"Reading interest data")
@@ -189,13 +192,17 @@ def create_summary_file(results, header, filename):
     header (list): A list of headers for the CSV file.
     filename (str): The name of the CSV file to write.
     """
-    returns_stats_by_period, total_returns_by_period = get_aggregate_returns_by_period(results)
+    returns_stats_by_period, total_returns_by_period = get_aggregate_returns_by_period(
+        results
+    )
     df = get_df_aggregate_returns_by_period(returns_stats_by_period)
 
     df.to_csv(filename, index=False)
     logger.info(f"Summary data written to {filename}")
 
-    json_filename = filename.replace("summary", "total_returns").replace(".csv", ".json")
+    json_filename = filename.replace("summary", "total_returns").replace(
+        ".csv", ".json"
+    )
     with open(json_filename, "w") as outfile:
         json.dump(total_returns_by_period, outfile)
     logger.info(f"Total returns data written to {json_filename}")
@@ -214,9 +221,11 @@ def create_summary_files(files):
     """
     # Extract unique suffixes from file names
     # returns_{years}_{suffix}
-    suffixes = list(set("_".join(os.path.basename(filename).split("_")[2:]) for filename in files))
+    suffixes = list(
+        set("_".join(os.path.basename(filename).split("_")[2:]) for filename in files)
+    )
     logger.info("Suffixes extracted from file names")
-    unique_suffixes = {'_'.join(x.split("_")[1:]) for x in suffixes}
+    unique_suffixes = {"_".join(x.split("_")[1:]) for x in suffixes}
     for s in unique_suffixes:
         logger.info(f"  - {s}")
     files_created = []
@@ -236,7 +245,9 @@ def read_summary_data(filename):
     :return:
     """
     df = pd.read_csv(filename)
-    json_filename = filename.replace("summary", "total_returns").replace(".csv", ".json")
+    json_filename = filename.replace("summary", "total_returns").replace(
+        ".csv", ".json"
+    )
     with open(json_filename, "r") as infile:
         total_returns_by_period = json.load(infile)
     return df, total_returns_by_period
@@ -246,19 +257,23 @@ def get_model_comparison_data(files, year=10):
     rdata = []
     for p in files:
         d, h = read_summary_data(p)
-        rdata.append(d.iloc[year-1].to_list())
-    drf = pd.DataFrame(rdata, columns=[
-        "sample_size",
-        "time_span",
-        "model_name",
-        "mean_total_returns",
-        "mean_yearly_compound_returns",
-        "median_total_returns",
-        "median_yearly_returns",
-        "sdev_total_returns",
-        "sdev_yearly_returns",
-        "fraction_losing_starts",
-        "mode_total_returns",
-        "mode_yearly_returns"])
+        rdata.append(d.iloc[year - 1].to_list())
+    drf = pd.DataFrame(
+        rdata,
+        columns=[
+            "sample_size",
+            "time_span",
+            "model_name",
+            "mean_total_returns",
+            "mean_yearly_compound_returns",
+            "median_total_returns",
+            "median_yearly_returns",
+            "sdev_total_returns",
+            "sdev_yearly_returns",
+            "fraction_losing_starts",
+            "mode_total_returns",
+            "mode_yearly_returns",
+        ],
+    )
     drf = drf.sort_values("mean_total_returns")
     return drf

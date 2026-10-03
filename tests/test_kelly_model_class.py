@@ -1,6 +1,7 @@
 import unittest
 from returns.models import *
 
+
 class TestKellyModel(unittest.TestCase):
 
     def setUp(self):
@@ -53,6 +54,7 @@ class TestKellyModel(unittest.TestCase):
         self.assertEqual(self.kelly_model.shares, 0)
         self.assertAlmostEqual(self.kelly_model.capital, 7100)
         self.assertIsNone(skip)
+
     def test_rebalance(self):
         self.kelly_model.shares = 150
         self.kelly_model.capital = 10000
@@ -68,8 +70,12 @@ class TestKellyModel(unittest.TestCase):
         self.kelly_model.end_date = datetime.datetime(2022, 12, 31)
         skip = self.kelly_model.daily_trade(datetime.datetime(2020, 1, 2), [100, 1])
         self.assertEqual(self.kelly_model.last_rebalance, datetime.datetime(2020, 1, 1))
-        self.assertEqual(skip,
-                   datetime.datetime(2020, 1, 1) + datetime.timedelta(days=90) - PADDING_TIME_DELTA)
+        self.assertEqual(
+            skip,
+            datetime.datetime(2020, 1, 1)
+            + datetime.timedelta(days=90)
+            - PADDING_TIME_DELTA,
+        )
 
     def test_daily_trade_rebalance(self):
         self.kelly_model.shares = 150
@@ -82,5 +88,6 @@ class TestKellyModel(unittest.TestCase):
         self.assertAlmostEqual(self.kelly_model.capital, 10096.187344628)
         self.assertEqual(self.kelly_model.shares, 151.44281016942574)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

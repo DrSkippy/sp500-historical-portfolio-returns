@@ -93,9 +93,7 @@ def find_latest_files(out_data: Path = OUT_DATA) -> dict[str, tuple[Path, Path]]
     """
     # Pattern: summary_{model_name}_{date}_{time}.csv
     summary_pattern = re.compile(r"^summary_(.+)_\d{4}-\d{2}-\d{2}_\d{4}\.csv$")
-    total_pattern = re.compile(
-        r"^total_returns_(.+)_\d{4}-\d{2}-\d{2}_\d{4}\.json$"
-    )
+    total_pattern = re.compile(r"^total_returns_(.+)_\d{4}-\d{2}-\d{2}_\d{4}\.json$")
 
     summaries: dict[str, Path] = {}
     totals: dict[str, Path] = {}
@@ -116,7 +114,10 @@ def find_latest_files(out_data: Path = OUT_DATA) -> dict[str, tuple[Path, Path]]
 
     models_found = set(summaries) & set(totals)
     if len(models_found) == 0:
-        print("ERROR: No matching summary/total_returns file pairs found.", file=sys.stderr)
+        print(
+            "ERROR: No matching summary/total_returns file pairs found.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     return {m: (summaries[m], totals[m]) for m in models_found}
@@ -146,8 +147,12 @@ def build_report_data(file_map: dict[str, tuple[Path, Path]]) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build report_data.json for the report site.")
-    parser.add_argument("--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)")
+    parser = argparse.ArgumentParser(
+        description="Build report_data.json for the report site."
+    )
+    parser.add_argument(
+        "--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)"
+    )
     args = parser.parse_args()
     with (ROOT / "config.yaml").open() as f:
         cfg = yaml.safe_load(f)["datasets"][args.dataset]

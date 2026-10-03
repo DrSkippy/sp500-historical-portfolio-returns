@@ -116,19 +116,9 @@ project-root/
 |---------------|---------------------|-------|--------------------------------|
 | PostgreSQL    | `192.168.1.91`      | 5434  | Primary database (`stock_quotes`, etc.) |
 | MySQL         | `192.168.1.91`      | 3306  | Legacy (e.g. weewx)            |
-| LM Studio (LLM) | `192.168.1.90`    | 1234  | Local LLM server, OpenAI-compatible (`/v1`) |
 
 - **PostgreSQL** is the default database. Use `psycopg` (v3) as the driver. SQLAlchemy is fine as an ORM when appropriate.
   In this repo, `returns/db.py` reads `PGHOST`/`PGPORT`/`PGUSER`/`PGPASSWORD`/`PGDATABASE` from `.envrc` — never hardcode connection defaults.
-- **LM Studio** provides local LLM access via an OpenAI-compatible API. Base URL: `http://192.168.1.90:1234/v1`
-  (Ollama on port 11434 is retired).
-  - Requests need `Authorization: Bearer $LM_API_TOKEN`; keep the token in `.envrc`, never in code or config.
-  - Use `/v1/chat/completions` with `response_format` (`json_schema`) for structured output.
-  - Prefer local models over external API calls when feasible.
-  - **Always validate LLM responses with Pydantic models.** Define expected response schemas as Pydantic classes and parse LLM output through them before use.
-  - List the currently loaded models with `GET /v1/models`. This repo's test agent uses `openai/gpt-oss-20b`.
-
-  - Specify the model name in `config.yaml` so it's easily swappable. Choose the smallest model that fits the task.
 
 ### Code Style & Conventions
 
@@ -136,7 +126,7 @@ project-root/
 - **Black** is the code formatter. Do not override its defaults. All code must pass `black --check` before merge.
 - **mypy** is used for static type checking. All code must pass `mypy --strict` (or project-configured strictness) before merge.
 - Both `black` and `mypy` run as part of the CI/CD pipeline — treat their failures as blocking.
-- **Pydantic** is the standard for data validation, settings management, and LLM response parsing. Use Pydantic `BaseModel` subclasses for API request/response schemas, config objects, and any structured data coming from external sources (especially LLM output).
+- **Pydantic** is the standard for data validation and settings management. Use Pydantic `BaseModel` subclasses for API request/response schemas, config objects, and any structured data coming from external sources.
 - Prefer `pathlib.Path` over `os.path` for file operations.
 - Use `logging` (not print statements) for application output. Configure logging in YAML.
 - Docstrings on all public functions and classes (Google style preferred).
@@ -146,7 +136,6 @@ project-root/
 
 - **Flask API template**: Use Blueprints for route organization. Load config from `config.yaml` at startup. Health check endpoint at `/health`.
 - **Database connections**: Load credentials from environment variables (via `.envrc`). Use connection pooling.
-- **LLM integration**: Point to LM Studio at `http://192.168.1.90:1234/v1` with the `LM_API_TOKEN` bearer token from `.envrc`. Specify model name in `config.yaml` so it's easily swappable. Always define a Pydantic model for expected LLM output and validate responses through it.
 - **CLI tools in `bin/`**: Use `argparse` or `click`. Make them executable and ensure they work within the Poetry virtualenv (`poetry run`).
 
 ### Git Practices

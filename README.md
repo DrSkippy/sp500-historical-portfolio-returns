@@ -86,7 +86,7 @@ static strategy description pages for each of the three strategy families.
 poetry run pytest --cov=returns --cov-report=term-missing tests/
 ```
 
-43 tests, ~72% coverage. Or use the LLM-powered test agent (see below).
+56 tests, ~75% coverage.
 
 ### Compute 30-day rolling returns
 
@@ -123,41 +123,6 @@ headers have an S&P 500 / QQQ switch). For QQQ, the recent-returns page uses the
 QQQ uses the split-adjusted `Close*` column (price return, no dividends), matching the
 S&P 500 price-index methodology; set `price_column: "Adj Close**"` to include dividends.
 
-## Test agent (LLM-powered)
-
-`bin/test_agent.py` runs pytest and, on any failure, queries the local LM Studio server for a
-structured analysis of root causes and suggested fixes.
-
-```bash
-# Run tests + LLM analysis on failure
-poetry run python bin/test_agent.py
-
-# Use a different loaded model
-poetry run python bin/test_agent.py --model qwen/qwen3-coder-30b
-
-# Target specific tests
-poetry run python bin/test_agent.py --pytest-args "-k test_data"
-
-# Just pytest, skip LLM
-poetry run python bin/test_agent.py --no-analysis
-```
-
-The agent is also available as a Claude Code subagent (`.claude/agents/test-runner.md`) and
-can be invoked by Claude automatically when asked to run or investigate tests.
-
-Configuration is in `config.yaml`:
-
-```yaml
-test_agent:
-  llm_base_url: "http://192.168.1.90:1234/v1"   # LM Studio, OpenAI-compatible
-  model: "openai/gpt-oss-20b"
-  request_timeout: 300
-  max_context_chars: 8000
-```
-
-The API token is read from `LM_API_TOKEN` in `.envrc`; without it the agent still runs the
-tests but skips the analysis.
-
 ## Project structure
 
 ```
@@ -173,8 +138,7 @@ sp500-historical-portfolio-returns/
 │   ├── generate_report.py     # Build report_data.json for the report site
 │   ├── get_monthly_returns.py # Rolling returns analysis
 │   ├── transform_new_sp500_records.py  # Data ingestion helper
-│   ├── download_qqq.py        # Download QQQ history to data/QQQ.tab
-│   └── test_agent.py          # LLM-powered test runner (LM Studio)
+│   └── download_qqq.py        # Download QQQ history to data/QQQ.tab
 ├── tests/
 │   ├── test_model_class.py
 │   ├── test_kelly_model_class.py
@@ -195,8 +159,8 @@ sp500-historical-portfolio-returns/
 │   └── data/                  # report_data.json (generated, not committed)
 ├── notebooks/                 # Exploratory Jupyter notebooks
 ├── .claude/agents/
-│   └── test-runner.md         # Claude Code subagent definition
-├── config.yaml                # Test agent (LM Studio) settings and dataset definitions
+│   └── test-runner.md         # Claude Code subagent that runs the test suite
+├── config.yaml                # Dataset definitions
 └── pyproject.toml
 ```
 
@@ -262,14 +226,13 @@ For each (model, holding period) combination the framework computes:
 
 | Package | Version | Purpose |
 |---|---|---|
-| `numpy` | ^1.26 | Numerical arrays and statistics |
-| `pandas` | ^2.1 | DataFrames and time-series handling |
-| `matplotlib` | ^3.8 | Plotting |
-| `seaborn` | ^0.13 | Statistical visualisation |
-| `pydantic` | ^2.12 | LLM response validation, data schemas |
-| `requests` | ^2.32 | LM Studio / Yahoo Finance HTTP calls |
+| `numpy` | ^2.5 | Numerical arrays and statistics |
+| `pandas` | ^3.0 | DataFrames and time-series handling |
+| `matplotlib` | ^3.11 | Plotting |
+| `seaborn` | ^0.13 | Statistical visualisation in notebooks (`notebook` group) |
+| `requests` | ^2.34 | Yahoo Finance HTTP calls |
 | `pyyaml` | ^6.0 | Config file loading |
 | `psycopg[binary]` | ^3.3 | PostgreSQL access for recent quotes |
-| `pytest` | ^7.4 | Test framework |
-| `pytest-cov` | ^7.0 | Coverage reporting |
-| `jupyter` / `notebook` | ^7.0 | Exploratory notebooks |
+| `pytest` | ^9.1 | Test framework (`dev` group) |
+| `pytest-cov` | ^7.1 | Coverage reporting (`dev` group) |
+| `notebook` | ^7.6 | Exploratory notebooks (`notebook` group) |

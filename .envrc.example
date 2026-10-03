@@ -6,5 +6,3 @@ export PGUSER=your_user
 export PGPASSWORD=your_password
 export PGDATABASE=stock_quotes
 export PYTHONPATH=$(pwd)
-# LM Studio (OpenAI-compatible LLM server) — used by bin/test_agent.py
-export LM_API_TOKEN=your_lm_studio_token

@@ -1,19 +1,3 @@
-test_agent:
-  # LM Studio (OpenAI-compatible); API token comes from LM_API_TOKEN in .envrc
-  llm_base_url: "http://192.168.1.90:1234/v1"
-  model: "openai/gpt-oss-20b"
-  request_timeout: 300
-  pytest_command:
-    - poetry
-    - run
-    - pytest
-    - "--cov=returns"
-    - "--cov-report=term-missing"
-    - "tests/"
-    - "-v"
-  # Maximum characters of pytest output to send to the LLM (keeps prompt size sane)
-  max_context_chars: 8000
-
 # Price datasets for the backtest pipeline (runner.py / summarize.py / generate_report.py --dataset <name>)
 # price_column: column in the price file used as the traded price.
 #   SP500.tab is a price index (Close* == Adj Close**). For QQQ, Close* is split-adjusted

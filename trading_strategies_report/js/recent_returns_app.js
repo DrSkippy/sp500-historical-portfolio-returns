@@ -9,7 +9,31 @@
 
 "use strict";
 
-const DATA_URL = "data/recent_returns_data.json";
+// Dataset selected via ?dataset=<key>; files are written by generate_recent_returns.py --dataset <key>
+const DATASET_FILES = {
+  sp500: "recent_returns_data.json",
+  qqq: "recent_returns_data_qqq.json",
+};
+const DATASET_PARAM = new URLSearchParams(location.search).get("dataset");
+const DATASET_KEY = DATASET_PARAM in DATASET_FILES ? DATASET_PARAM : "sp500";
+const DATA_URL = `data/${DATASET_FILES[DATASET_KEY]}`;
+
+/** Fill dataset-specific labels and keep the dataset param on cross-page links. */
+function applyDatasetLabels(data) {
+  const fill = (cls, text) => document.querySelectorAll(cls).forEach(el => { el.textContent = text; });
+  if (data) {
+    fill(".dataset-label", data.label || "S&P 500");
+    fill(".recent-symbol", data.symbol || "SPY");
+    fill(".history-start", data.history_start || 1956);
+    document.title = `Recent Returns in Historical Context — ${data.label || "S&P 500"}`;
+  }
+  document.querySelectorAll("a.keep-dataset").forEach(a => {
+    a.href = `${a.getAttribute("href").split("?")[0]}?dataset=${DATASET_KEY}`;
+  });
+  document.querySelectorAll("#dataset-switch a").forEach(a => {
+    a.classList.toggle("active", a.dataset.key === DATASET_KEY);
+  });
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -197,10 +221,12 @@ async function init() {
   const loadingEl = document.getElementById("loading");
   const errorEl = document.getElementById("error");
 
+  applyDatasetLabels(null);
   try {
     const resp = await fetch(DATA_URL);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.url}`);
     const data = await resp.json();
+    applyDatasetLabels(data);
 
     if (loadingEl) loadingEl.classList.add("hidden");
 
@@ -226,7 +252,7 @@ async function init() {
     if (loadingEl) loadingEl.classList.add("hidden");
     if (errorEl) {
       errorEl.classList.remove("hidden");
-      errorEl.textContent = `Failed to load data: ${err.message}. Run bin/generate_recent_returns.py first.`;
+      errorEl.textContent = `Failed to load data: ${err.message}. Run bin/generate_recent_returns.py --dataset ${DATASET_KEY} first.`;
     }
     console.error(err);
   }

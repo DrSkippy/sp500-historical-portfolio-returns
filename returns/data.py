@@ -3,8 +3,10 @@ import datetime
 import json
 import locale
 import logging
+import os
 
 import pandas as pd
+import yaml
 
 from returns.analysis import get_aggregate_returns_by_period, get_df_aggregate_returns_by_period
 
@@ -14,6 +16,9 @@ locale.setlocale(locale.LC_ALL, '')
 
 sp500_input_path = "./data/SP500.tab"
 interest_input_path = "./data/interest.tab"
+combined_output_path = "./data/combined_data.csv"
+out_data_path = "./out_data/"
+config_path = "./config.yaml"
 
 FMT_IN = "%b %d, %Y"
 FMT_out = "%Y-%m-%d"
@@ -22,6 +27,30 @@ sp500_index = 5
 interest_index = 0
 combined_sp500_index = sp500_index
 combined_interest_index = 7 + interest_index
+
+
+def use_dataset(name):
+    """
+    Point the module-level paths and price column at a dataset from config.yaml.
+
+    Parameters:
+    name (str): Key under `datasets` in config.yaml (e.g. "sp500", "qqq").
+
+    Returns:
+    dict: The dataset's config entry.
+    """
+    global sp500_input_path, combined_output_path, out_data_path, sp500_index, combined_sp500_index
+    with open(config_path, "r") as infile:
+        cfg = yaml.safe_load(infile)["datasets"][name]
+    with open(cfg["price_path"], "r") as infile:
+        header = next(csv.reader(infile, delimiter="\t"))
+    sp500_input_path = cfg["price_path"]
+    combined_output_path = cfg["combined_path"]
+    out_data_path = cfg["out_dir"]
+    sp500_index = header.index(cfg["price_column"])
+    combined_sp500_index = sp500_index
+    logger.info(f"Using dataset {name}: {cfg}")
+    return cfg
 
 
 def get_interest_data():
@@ -108,7 +137,7 @@ def create_combined_data_file():
     Creates a combined CSV file with data from all model runs.
     """
     data, header = get_combined_sp500_interest_data()
-    with open("./data/combined_data.csv", "w") as outfile:
+    with open(combined_output_path, "w") as outfile:
         writer = csv.writer(outfile)
         writer.writerow(header)
         for row in data:
@@ -131,7 +160,7 @@ def get_model_run_outputs(suffix, years=[1, 2, 3]):
 
     logger.info(f"Reading model run data")
     for year in years:
-        filename = f"./out_data/returns_{year}_{suffix}"
+        filename = f"{out_data_path}returns_{year}_{suffix}"
         logger.info(f"Reading {filename}")
 
         with open(filename, "r") as infile:
@@ -148,7 +177,7 @@ def get_model_run_outputs(suffix, years=[1, 2, 3]):
         logger.info(f"Read {len(data)} rows")
         logger.info(f"Fields = {header}")
 
-    return results, header, f"./out_data/summary_{suffix}"
+    return results, header, f"{out_data_path}summary_{suffix}"
 
 
 def create_summary_file(results, header, filename):
@@ -184,8 +213,8 @@ def create_summary_files(files):
     str: The selected file suffix.
     """
     # Extract unique suffixes from file names
-    # there is an _ in the directory name so 3 not 2...!!
-    suffixes = list(set("_".join(filename.split("_")[3:]) for filename in files))
+    # returns_{years}_{suffix}
+    suffixes = list(set("_".join(os.path.basename(filename).split("_")[2:]) for filename in files))
     logger.info("Suffixes extracted from file names")
     unique_suffixes = {'_'.join(x.split("_")[1:]) for x in suffixes}
     for s in unique_suffixes:

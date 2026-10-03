@@ -96,6 +96,25 @@ poetry run python bin/transform_new_sp500_records.py
 
 Transforms newly downloaded SP500 records into the `.tab` format used by the data loader.
 
+### Run the analysis on QQQ (Nasdaq-100)
+
+The pipeline can run against any dataset defined under `datasets:` in `config.yaml`
+(`sp500` is the default). To repeat the full analysis on QQQ:
+
+```bash
+poetry run python bin/download_qqq.py               # data/QQQ.tab from Yahoo Finance (Mar 1999 – today)
+poetry run python bin/runner.py --dataset qqq       # writes ./out_data/qqq/
+poetry run python bin/summarize.py --dataset qqq    # also writes data/combined_qqq_interest_data.csv
+poetry run python bin/generate_report.py --dataset qqq  # writes report_data_qqq.json
+poetry run python bin/generate_recent_returns.py --dataset qqq  # writes recent_returns_data_qqq.json
+```
+
+View it at `http://localhost:8080/?dataset=qqq` and `recent_returns.html?dataset=qqq` (both
+headers have an S&P 500 / QQQ switch). For QQQ, the recent-returns page uses the tail of
+`data/QQQ.tab` instead of MySQL, so re-run `download_qqq.py` to refresh it.
+QQQ uses the split-adjusted `Close*` column (price return, no dividends), matching the
+S&P 500 price-index methodology; set `price_column: "Adj Close**"` to include dividends.
+
 ## Test agent (Ollama-powered)
 
 `bin/test_agent.py` runs pytest and, on any failure, queries a local Ollama LLM for a
@@ -142,6 +161,7 @@ sp500-historical-portfolio-returns/
 │   ├── generate_report.py     # Build report_data.json for the report site
 │   ├── get_monthly_returns.py # Rolling returns analysis
 │   ├── transform_new_sp500_records.py  # Data ingestion helper
+│   ├── download_qqq.py        # Download QQQ history to data/QQQ.tab
 │   └── test_agent.py          # Ollama-powered test runner
 ├── tests/
 │   ├── test_model_class.py
@@ -152,6 +172,7 @@ sp500-historical-portfolio-returns/
 │   └── test_monthly_returns.py
 ├── data/
 │   ├── SP500.tab              # Daily OHLCV + Adj Close (Aug 1956 – Mar 2026)
+│   ├── QQQ.tab                # QQQ daily OHLCV, same layout (Mar 1999 – )
 │   └── interest.tab           # Annual interest rates (bond return proxy)
 ├── out_data/                  # Backtest output (generated, not committed)
 ├── trading_strategies_report/ # Static HTML/JS report site
@@ -163,7 +184,7 @@ sp500-historical-portfolio-returns/
 ├── notebooks/                 # Exploratory Jupyter notebooks
 ├── .claude/agents/
 │   └── test-runner.md         # Claude Code subagent definition
-├── config.yaml                # Test agent and Ollama settings
+├── config.yaml                # Test agent / Ollama settings and dataset definitions
 └── pyproject.toml
 ```
 
@@ -173,6 +194,10 @@ sp500-historical-portfolio-returns/
 - Source: https://seekingalpha.com/symbol/SP500/historical-price-quotes
 - Columns: `Date`, `Open`, `High`, `Low`, `Close*`, `Adj Close**`, `Volume`
 - Dates in `"%b %d, %Y"` format; numbers may contain locale-formatted commas
+
+**`data/QQQ.tab`** — QQQ daily prices in the same layout, ~6,900 rows
+- Source: Yahoo Finance chart API (`bin/download_qqq.py`)
+- `Close*` is split-adjusted; `Adj Close**` is split- and dividend-adjusted
 
 **`data/interest.tab`** — annual interest rates (FRED GS1 series), one row per year
 - Source: FRED GS1 — Market Yield on U.S. Treasury Securities at 1-Year Constant Maturity, Quoted on an Investment Basis

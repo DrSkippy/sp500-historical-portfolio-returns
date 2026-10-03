@@ -1,24 +1,29 @@
 """Generate report_data.json for the trading strategies static report site.
 
-Reads all out_data/summary_*.csv and out_data/total_returns_*.json files,
+Reads all <out_dir>/summary_*.csv and <out_dir>/total_returns_*.json files,
 merges them, and writes trading_strategies_report/data/report_data.json.
 
 Usage:
-    poetry run python bin/generate_report.py
+    poetry run python bin/generate_report.py [--dataset qqq]
+
+With --dataset, reads that dataset's out_dir and writes its report_data file
+(e.g. report_data_qqq.json, viewed at index.html?dataset=qqq).
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import re
 import sys
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).parent.parent
 OUT_DATA = ROOT / "out_data"
 REPORT_DATA_DIR = ROOT / "trading_strategies_report" / "data"
-OUTPUT_PATH = REPORT_DATA_DIR / "report_data.json"
 
 # Only include these years in distribution data to keep JSON manageable
 DIST_YEARS = {"1", "5", "10", "15"}
@@ -80,7 +85,7 @@ def load_distributions(json_path: Path) -> dict[str, list[float]]:
     return {k: v for k, v in data.items() if k in DIST_YEARS}
 
 
-def find_latest_files() -> dict[str, tuple[Path, Path]]:
+def find_latest_files(out_data: Path = OUT_DATA) -> dict[str, tuple[Path, Path]]:
     """Find the most recent summary + total_returns file pair per model.
 
     Returns mapping: model_name -> (summary_path, total_returns_path)
@@ -95,7 +100,7 @@ def find_latest_files() -> dict[str, tuple[Path, Path]]:
     summaries: dict[str, Path] = {}
     totals: dict[str, Path] = {}
 
-    for p in OUT_DATA.iterdir():
+    for p in out_data.iterdir():
         m = summary_pattern.match(p.name)
         if m:
             model = m.group(1)
@@ -141,21 +146,29 @@ def build_report_data(file_map: dict[str, tuple[Path, Path]]) -> dict:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Build report_data.json for the report site.")
+    parser.add_argument("--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)")
+    args = parser.parse_args()
+    with (ROOT / "config.yaml").open() as f:
+        cfg = yaml.safe_load(f)["datasets"][args.dataset]
+    out_data = ROOT / cfg["out_dir"]
+    output_path = REPORT_DATA_DIR / cfg["report_data"]
+
     REPORT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"Scanning {OUT_DATA} for model files...")
-    file_map = find_latest_files()
+    print(f"Scanning {out_data} for model files...")
+    file_map = find_latest_files(out_data)
     print(f"Found {len(file_map)} model(s): {', '.join(sorted(file_map))}")
 
     print("Building report data...")
     report = build_report_data(file_map)
 
-    print(f"Writing {OUTPUT_PATH}...")
-    with OUTPUT_PATH.open("w") as f:
+    print(f"Writing {output_path}...")
+    with output_path.open("w") as f:
         json.dump(report, f, separators=(",", ":"))
 
-    size_mb = OUTPUT_PATH.stat().st_size / 1_048_576
-    print(f"Done. {OUTPUT_PATH} ({size_mb:.1f} MB, {len(report['models'])} models)")
+    size_mb = output_path.stat().st_size / 1_048_576
+    print(f"Done. {output_path} ({size_mb:.1f} MB, {len(report['models'])} models)")
 
 
 if __name__ == "__main__":

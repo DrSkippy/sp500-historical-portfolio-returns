@@ -11,3 +11,31 @@ test_agent:
     - "-v"
   # Maximum characters of pytest output to send to the LLM (keeps prompt size sane)
   max_context_chars: 8000
+
+# Price datasets for the backtest pipeline (runner.py / summarize.py / generate_report.py --dataset <name>)
+# price_column: column in the price file used as the traded price.
+#   SP500.tab is a price index (Close* == Adj Close**). For QQQ, Close* is split-adjusted
+#   price-only, matching the S&P methodology; use "Adj Close**" to include reinvested dividends.
+datasets:
+  sp500:
+    price_path: ./data/SP500.tab
+    combined_path: ./data/combined_data.csv
+    out_dir: ./out_data/
+    report_data: report_data.json
+    price_column: "Adj Close**"
+    label: "S&P 500"
+    # generate_recent_returns.py: recent quotes come from MySQL (stock_quotes.quotes) for this symbol
+    recent_source: mysql
+    recent_symbol: SPY
+    recent_data: recent_returns_data.json
+  qqq:
+    price_path: ./data/QQQ.tab
+    combined_path: ./data/combined_qqq_interest_data.csv
+    out_dir: ./out_data/qqq/
+    report_data: report_data_qqq.json
+    price_column: "Close*"
+    label: "QQQ (Nasdaq-100)"
+    # recent quotes are the tail of price_path (refresh with bin/download_qqq.py)
+    recent_source: file
+    recent_symbol: QQQ
+    recent_data: recent_returns_data_qqq.json

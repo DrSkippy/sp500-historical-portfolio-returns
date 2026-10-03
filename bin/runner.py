@@ -1,6 +1,9 @@
+import argparse
 import bisect
 import multiprocessing as mp
+from pathlib import Path
 
+import returns.data
 from returns.data import *
 from returns.models import *
 
@@ -11,13 +14,14 @@ logging.basicConfig(level=logging.DEBUG,
                     filename='app1.log',
                     filemode='w')
 
-path = "./out_data/"
 
-
-def model_tester(model, data, years=10):
+def model_tester(model, data, years=10, price_index=None):
     """
     Tests the given model on the provided data for the specified number of years.
+    price_index selects the price column in each combined data row (default: the active dataset's).
     """
+    if price_index is None:
+        price_index = returns.data.combined_sp500_index
     test_interval = datetime.timedelta(days=STRIDE_DAYS)
     test_start_date = data[0][0]  # first (oldest) date in data
     model_returns = []
@@ -37,7 +41,7 @@ def model_tester(model, data, years=10):
                 continue
             else:
                 # data is (stock price, interest rate by years)
-                _data = (d[combined_sp500_index], d[combined_interest_index])
+                _data = (d[price_index], d[combined_interest_index])
                 skip_to_date = model.trade(d[0], _data)
 
         for log_line in model.status():
@@ -63,14 +67,16 @@ def all_model_specs():
             yield ("InsuranceModel", {"insurance_frac": i, "insurance_deductible": j})
 
 
-def model_test_worker(years: int, class_name: str, model_kwargs: dict, date_str: str) -> None:
+def model_test_worker(years: int, class_name: str, model_kwargs: dict, date_str: str,
+                      dataset: str = "sp500") -> None:
     """Worker that runs one (years, model) combination and writes results to CSV."""
+    use_dataset(dataset)
     d, h = get_combined_sp500_interest_data()
     model_classes = {"Model": Model, "KellyModel": KellyModel, "InsuranceModel": InsuranceModel}
     m = model_classes[class_name](**model_kwargs)
     rets = model_tester(m, d, years=years)
 
-    fn = f"{path}returns_{years}_{rets[0][-1]}_{date_str}.csv"
+    fn = f"{returns.data.out_data_path}returns_{years}_{rets[0][-1]}_{date_str}.csv"
     logging.info(f"Writing results to {fn}")
 
     with open(fn, "w") as outfile:
@@ -81,9 +87,14 @@ def model_test_worker(years: int, class_name: str, model_kwargs: dict, date_str:
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Run the full backtest grid.")
+    parser.add_argument("--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)")
+    args = parser.parse_args()
+    use_dataset(args.dataset)
+    Path(returns.data.out_data_path).mkdir(parents=True, exist_ok=True)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
     tasks = [
-        (years, class_name, kwargs, date_str)
+        (years, class_name, kwargs, date_str, args.dataset)
         for years in range(1, 16)
         for class_name, kwargs in all_model_specs()
     ]

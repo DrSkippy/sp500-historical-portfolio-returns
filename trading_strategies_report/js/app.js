@@ -14,12 +14,23 @@ let CHARTS = {};           // active Chart.js instances keyed by name
 let SORT_STATE = { col: "mean_yearly", dir: "desc" };
 let SELECTED_ROW = null;   // model name highlighted in table
 
+// Dataset selected via ?dataset=<key>; files are written by generate_report.py --dataset <key>
+const DATASETS = {
+  sp500: { file: "report_data.json", label: "S&P 500" },
+  qqq:   { file: "report_data_qqq.json", label: "QQQ (Nasdaq-100)" },
+};
+const DATASET_KEY = new URLSearchParams(location.search).get("dataset") in DATASETS
+  ? new URLSearchParams(location.search).get("dataset")
+  : "sp500";
+const DATASET = DATASETS[DATASET_KEY];
+
 // ─── Boot ───────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
-  fetch("data/report_data.json")
+  applyDatasetLabels();
+  fetch(`data/${DATASET.file}`)
     .then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status} loading report_data.json`);
+      if (!r.ok) throw new Error(`HTTP ${r.status} loading ${DATASET.file}`);
       return r.json();
     })
     .then(data => {
@@ -33,6 +44,17 @@ document.addEventListener("DOMContentLoaded", () => {
       el.classList.remove("hidden");
     });
 });
+
+function applyDatasetLabels() {
+  document.querySelectorAll(".dataset-label").forEach(el => { el.textContent = DATASET.label; });
+  document.title = `${DATASET.label} Trading Strategies Report`;
+  document.querySelectorAll("#dataset-switch a").forEach(a => {
+    a.classList.toggle("active", a.dataset.key === DATASET_KEY);
+  });
+  document.querySelectorAll("a.keep-dataset").forEach(a => {
+    a.href = `${a.getAttribute("href").split("?")[0]}?dataset=${DATASET_KEY}`;
+  });
+}
 
 function initApp() {
   document.getElementById("loading").classList.add("hidden");
@@ -444,7 +466,7 @@ function buildAdviceHTML() {
         </table>
       </div>
       <p style="margin-top:.75rem; font-size:.8rem; color:#6c757d;">
-        Based on historical S&amp;P 500 data. All strategies are exposed to sequence-of-returns risk.
+        Based on historical ${DATASET.label} data. All strategies are exposed to sequence-of-returns risk.
         Past performance does not guarantee future results.
       </p>
     </div>

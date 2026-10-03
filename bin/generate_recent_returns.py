@@ -1,11 +1,15 @@
 """
 generate_recent_returns.py
 
-Reads S&P 500 historical data (SP500.tab) and recent SPY prices from MySQL,
-computes daily/weekly/monthly return distributions, and writes
-trading_strategies_report/data/recent_returns_data.json.
+Reads a dataset's historical prices (default: S&P 500, SP500.tab) and its recent
+quotes (SPY from MySQL, or the tail of the price file), computes daily/weekly/monthly
+return distributions, and writes trading_strategies_report/data/<recent_data>.json.
+
+Usage:
+    poetry run python bin/generate_recent_returns.py [--dataset qqq]
 """
 
+import argparse
 import json
 import os
 import sys
@@ -14,9 +18,10 @@ from datetime import date, datetime
 import pymysql
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from returns.data import get_sp500_data
+import returns.data
+from returns.data import get_sp500_data, use_dataset
 
-OUTPUT_PATH = "trading_strategies_report/data/recent_returns_data.json"
+OUTPUT_DIR = "trading_strategies_report/data"
 
 MYSQL_HOST = os.environ.get("MYSQL_HOST", "192.168.1.91")
 MYSQL_USER = os.environ.get("MYSQL_USER", "scott")
@@ -65,8 +70,8 @@ def percentile_rank(hist_values, recent_value):
     return count / len(hist_values) * 100.0
 
 
-def get_spy_from_mysql():
-    """Query SPY closing prices from MySQL, sorted ascending by date."""
+def get_spy_from_mysql(symbol="SPY"):
+    """Query closing prices for symbol from MySQL, sorted ascending by date."""
     conn = pymysql.connect(
         host=MYSQL_HOST,
         user=MYSQL_USER,
@@ -78,8 +83,9 @@ def get_spy_from_mysql():
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT date, close FROM quotes "
-                "WHERE symbol='SPY' AND namespace='NASDAQ' "
-                "ORDER BY date ASC"
+                "WHERE symbol=%s AND namespace='NASDAQ' "
+                "ORDER BY date ASC",
+                (symbol,),
             )
             rows = cur.fetchall()
     finally:
@@ -125,11 +131,18 @@ def build_recent_entries(dated_prices, window, n_recent, hist_values):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Build recent returns data for the report site.")
+    parser.add_argument("--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)")
+    args = parser.parse_args()
+    cfg = use_dataset(args.dataset)
+    symbol = cfg["recent_symbol"]
+    output_path = os.path.join(OUTPUT_DIR, cfg["recent_data"])
+
     # ── 1. Historical data ──────────────────────────────────────────────────
-    print("Loading SP500.tab...")
+    print(f"Loading {returns.data.sp500_input_path}...")
     sp500_data, _ = get_sp500_data()
-    # adj_close is index 5 (0=date, 1=open, 2=high, 3=low, 4=close, 5=adj_close, 6=volume)
-    hist_prices = [row[5] for row in sp500_data]
+    # price column from config (0=date, 1=open, 2=high, 3=low, 4=close, 5=adj_close, 6=volume)
+    hist_prices = [row[returns.data.sp500_index] for row in sp500_data]
     print(f"  {len(hist_prices)} historical prices loaded")
 
     hist_daily = compute_returns(hist_prices, 1)
@@ -137,10 +150,13 @@ def main():
     hist_monthly = compute_returns(hist_prices, 21)
     print(f"  Historical: {len(hist_daily)} daily, {len(hist_weekly)} weekly, {len(hist_monthly)} monthly")
 
-    # ── 2. Recent SPY data from MySQL ───────────────────────────────────────
-    print(f"Connecting to MySQL at {MYSQL_HOST}...")
-    spy_rows = get_spy_from_mysql()
-    print(f"  {len(spy_rows)} SPY rows loaded (latest: {spy_rows[-1][0] if spy_rows else 'none'})")
+    # ── 2. Recent quotes ────────────────────────────────────────────────────
+    if cfg["recent_source"] == "mysql":
+        print(f"Connecting to MySQL at {MYSQL_HOST}...")
+        spy_rows = get_spy_from_mysql(symbol)
+    else:
+        spy_rows = [(row[0].date(), row[returns.data.sp500_index]) for row in sp500_data]
+    print(f"  {len(spy_rows)} {symbol} rows loaded (latest: {spy_rows[-1][0] if spy_rows else 'none'})")
 
     latest_date = spy_rows[-1][0] if spy_rows else None
     latest_close = spy_rows[-1][1] if spy_rows else None
@@ -156,6 +172,9 @@ def main():
     # ── 4. Assemble output ──────────────────────────────────────────────────
     output = {
         "generated_at": date.today().isoformat(),
+        "label": cfg["label"],
+        "symbol": symbol,
+        "history_start": sp500_data[0][0].year,
         "latest_spy_date": latest_date_str,
         "latest_spy_close": latest_close,
         "daily": {
@@ -175,10 +194,10 @@ def main():
         },
     }
 
-    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    with open(OUTPUT_PATH, "w") as f:
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    with open(output_path, "w") as f:
         json.dump(output, f, separators=(",", ":"))
-    print(f"Written: {OUTPUT_PATH}")
+    print(f"Written: {output_path}")
     print(f"  daily values: {len(output['daily']['values'])}, recent: {len(output['daily']['recent'])}")
     print(f"  weekly values: {len(output['weekly']['values'])}, recent: {len(output['weekly']['recent'])}")
     print(f"  monthly values: {len(output['monthly']['values'])}, recent: {len(output['monthly']['recent'])}")

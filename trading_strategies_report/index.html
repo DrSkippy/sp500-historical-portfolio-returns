@@ -9,8 +9,9 @@
 </head>
 <body>
   <header>
-    <h1>S&amp;P 500 Historical Portfolio Returns</h1>
+    <h1><span class="dataset-label">S&amp;P 500</span> Historical Portfolio Returns</h1>
     <p class="subtitle">Comparing Buy &amp; Hold, Fractional Kelly, and Insurance strategies across 1–15 year holding periods</p>
+    <p id="dataset-switch" class="subtitle">Dataset: <a href="?dataset=sp500" data-key="sp500">S&amp;P 500</a> · <a href="?dataset=qqq" data-key="qqq">QQQ</a></p>
   </header>
 
   <nav id="section-nav">
@@ -24,7 +25,7 @@
     <a href="strategies/buy-hold.html">Buy &amp; Hold ↗</a>
     <a href="strategies/kelly.html">Kelly ↗</a>
     <a href="strategies/insurance.html">Insurance ↗</a>
-    <a href="recent_returns.html">Recent Returns ↗</a>
+    <a href="recent_returns.html" class="keep-dataset">Recent Returns ↗</a>
   </nav>
 
   <main id="app">
@@ -140,7 +141,7 @@
   </main>
 
   <footer>
-    <p>Based on S&amp;P 500 daily price history. Past performance does not guarantee future results. This is not financial advice.</p>
+    <p>Based on <span class="dataset-label">S&amp;P 500</span> daily price history. Past performance does not guarantee future results. This is not financial advice.</p>
   </footer>
 
   <script src="js/charts.js"></script>

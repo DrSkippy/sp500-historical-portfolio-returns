@@ -1,14 +1,34 @@
 import argparse
 import bisect
+import csv
+import datetime
+import logging
 import multiprocessing as mp
 from pathlib import Path
+from typing import Any, Iterator
 
 import returns.data
-from returns.data import *
-from returns.models import *
+from returns.data import (
+    combined_interest_index,
+    get_combined_sp500_interest_data,
+    use_dataset,
+)
+from returns.models import (
+    PADDING_TIME_DELTA,
+    STRIDE_DAYS,
+    InsuranceModel,
+    KellyModel,
+    Model,
+    Returns,
+)
 
 
-def model_tester(model, data, years=10, price_index=None):
+def model_tester(
+    model: Model,
+    data: list[list[Any]],
+    years: int = 10,
+    price_index: int | None = None,
+) -> list[Returns]:
     """
     Tests the given model on the provided data for the specified number of years.
     price_index selects the price column in each combined data row (default: the active dataset's).
@@ -17,7 +37,7 @@ def model_tester(model, data, years=10, price_index=None):
         price_index = returns.data.combined_sp500_index
     test_interval = datetime.timedelta(days=STRIDE_DAYS)
     test_start_date = data[0][0]  # first (oldest) date in data
-    model_returns = []
+    model_returns: list[Returns] = []
 
     logging.info("Starting model testing")
 
@@ -56,28 +76,31 @@ def model_tester(model, data, years=10, price_index=None):
     return model_returns
 
 
-def all_model_specs():
+def all_model_specs() -> Iterator[tuple[str, dict[str, float]]]:
     """Yields (class_name, kwargs) for every model variant."""
     yield ("Model", {})
     for i in [0.1, 0.2, 0.25, 0.15]:
         for j in [90, 180]:
             yield ("KellyModel", {"bond_fract": i, "rebalance_period": j})
-    for i in [0.05, 0.1]:
-        for j in [0.09, 0.12, 0.18]:
-            yield ("InsuranceModel", {"insurance_frac": i, "insurance_deductible": j})
+    for frac in [0.05, 0.1]:
+        for deductible in [0.09, 0.12, 0.18]:
+            yield (
+                "InsuranceModel",
+                {"insurance_frac": frac, "insurance_deductible": deductible},
+            )
 
 
 def model_test_worker(
     years: int,
     class_name: str,
-    model_kwargs: dict,
+    model_kwargs: dict[str, Any],
     date_str: str,
     dataset: str = "sp500",
 ) -> None:
     """Worker that runs one (years, model) combination and writes results to CSV."""
     use_dataset(dataset)
     d, h = get_combined_sp500_interest_data()
-    model_classes = {
+    model_classes: dict[str, type[Model]] = {
         "Model": Model,
         "KellyModel": KellyModel,
         "InsuranceModel": InsuranceModel,

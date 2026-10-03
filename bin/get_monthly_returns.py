@@ -1,5 +1,7 @@
-from returns.data import *
-from returns.monthly_returns import *
+import logging
+
+from returns.data import get_combined_sp500_interest_data
+from returns.monthly_returns import MonthlyReturns
 
 # Configure logging
 logging.basicConfig(

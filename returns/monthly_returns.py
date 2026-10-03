@@ -1,4 +1,6 @@
 import logging
+from typing import Any, Sequence
+
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -10,7 +12,7 @@ OFFSET = 30
 
 class MonthlyReturns:
 
-    def __init__(self, daily_close, header):
+    def __init__(self, daily_close: Sequence[Sequence[Any]], header: list[str]) -> None:
         self.df = pd.DataFrame(daily_close, columns=header)
         self.returns = (
             self.df["Adj Close**"] - self.df["Adj Close**"].shift(OFFSET)
@@ -19,7 +21,7 @@ class MonthlyReturns:
         self.returns = self.returns.reset_index(drop=True)
         logger.info(f"Monthly returns initialized with {len(self.returns)} samples.")
 
-    def write_to_csv(self, filename):
+    def write_to_csv(self, filename: str) -> None:
         """
         Writes the monthly returns to a CSV file.
 
@@ -29,10 +31,10 @@ class MonthlyReturns:
         self.returns.to_csv(filename, index=False)
         logger.info(f"Monthly returns written to {filename}")
 
-    def sample(self):
-        return self.returns[np.random.randint(len(self.returns))]
+    def sample(self) -> float:
+        return float(self.returns[np.random.randint(len(self.returns))])
 
-    def summary(self):
+    def summary(self) -> None:
         print("Monthly Returns Summary:")
         print(f"Total Samples: {len(self.returns)}")
         print(f"Mean Return: {self.returns.mean():.4f}")
@@ -41,9 +43,11 @@ class MonthlyReturns:
         print(f"Minimum Return: {self.returns.min():.4f}")
         print(f"Maximum Return: {self.returns.max():.4f}")
 
-    def plot_returns(self):
+    def plot_returns(self) -> None:
         plt.figure(figsize=(10, 5))
-        plt.hist(self.returns.values, bins=60, label="Monthly Returns", color="blue")
+        plt.hist(
+            self.returns.to_numpy(), bins=60, label="Monthly Returns", color="blue"
+        )
         plt.title("Monthly Returns Distribution")
         plt.xlabel("Returns")
         plt.ylabel("Frequency")

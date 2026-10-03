@@ -3,6 +3,7 @@ import datetime
 import importlib.util
 import math
 from pathlib import Path
+from typing import Any, Callable, Sequence
 
 import pytest
 
@@ -11,6 +12,7 @@ from returns.models import InsuranceModel, KellyModel, Model
 spec = importlib.util.spec_from_file_location(
     "runner", Path(__file__).parent.parent / "bin" / "runner.py"
 )
+assert spec is not None and spec.loader is not None
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 
@@ -19,7 +21,7 @@ INTEREST_IDX = 7
 
 
 @pytest.fixture
-def data():
+def data() -> list[list[Any]]:
     """~3 years of daily rows shaped like combined data: [date, ..., price @5, ..., interest @7]."""
     start = datetime.datetime(2000, 1, 3)
     rows = []
@@ -30,11 +32,11 @@ def data():
     return rows
 
 
-def reference_tester(model, data, years):
+def reference_tester(model: Model, data: list[list[Any]], years: int) -> list[Any]:
     """Original model_tester loop: scans to the end of the data for every window (no early exit)."""
     test_start_date = data[0][0]
     dates = [d[0] for d in data]
-    out = []
+    out: list[Any] = []
     while test_start_date + datetime.timedelta(days=365 * years) < data[-1][0]:
         model.model_config(test_start_date, years=years)
         start_idx = bisect.bisect_left(
@@ -58,24 +60,30 @@ def reference_tester(model, data, years):
         lambda: InsuranceModel(insurance_frac=0.1, insurance_deductible=0.09),
     ],
 )
-def test_early_exit_matches_full_scan(data, make_model):
+def test_early_exit_matches_full_scan(
+    data: list[list[Any]], make_model: Callable[[], Model]
+) -> None:
     got = runner.model_tester(make_model(), data, years=1, price_index=PRICE_IDX)
     want = reference_tester(make_model(), data, years=1)
     assert len(got) > 100
     assert got == want
 
 
-def test_stops_trading_after_window_end(data):
+def test_stops_trading_after_window_end(
+    data: list[list[Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
     model = KellyModel(bond_fract=0.2, rebalance_period=90)
-    calls_after_end = []
+    calls_after_end: list[datetime.datetime] = []
     orig_trade = model.trade
 
-    def counting_trade(date, price):
+    def counting_trade(
+        date: datetime.datetime, price: Sequence[float]
+    ) -> datetime.datetime | None:
         if date >= model.end_date:
             calls_after_end.append(date)
         return orig_trade(date, price)
 
-    model.trade = counting_trade
+    monkeypatch.setattr(model, "trade", counting_trade)
     rets = runner.model_tester(model, data, years=1, price_index=PRICE_IDX)
     # exactly one post-window call per window: the one that makes the last trade
     assert len(calls_after_end) == len(rets)

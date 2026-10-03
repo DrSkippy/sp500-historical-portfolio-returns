@@ -30,14 +30,15 @@ HEADER = ["Date", "Open", "High", "Low", "Close*", "Adj Close**", "Volume"]
 
 def fetch_chart(symbol: str) -> dict[str, Any]:
     """Fetch the full daily chart history for a symbol from Yahoo Finance."""
+    params: dict[str, str | int] = {
+        "period1": 0,
+        "period2": 9999999999,
+        "interval": "1d",
+        "events": "div,split",
+    }
     resp = requests.get(
         CHART_URL.format(symbol=symbol),
-        params={
-            "period1": 0,
-            "period2": 9999999999,
-            "interval": "1d",
-            "events": "div,split",
-        },
+        params=params,
         headers={"User-Agent": "Mozilla/5.0"},
         timeout=30,
     )

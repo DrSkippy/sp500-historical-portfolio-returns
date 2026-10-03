@@ -17,6 +17,7 @@ import csv
 import json
 import re
 import sys
+from typing import Any
 from pathlib import Path
 
 import yaml
@@ -29,7 +30,7 @@ REPORT_DATA_DIR = ROOT / "trading_strategies_report" / "data"
 DIST_YEARS = {"1", "5", "10", "15"}
 
 
-def parse_model_name(name: str) -> tuple[str, dict]:
+def parse_model_name(name: str) -> tuple[str, dict[str, Any]]:
     """Return (family, params) from a model name string."""
     if name == "Buy_Hold":
         return "buy_hold", {}
@@ -51,7 +52,7 @@ def parse_model_name(name: str) -> tuple[str, dict]:
     return "unknown", {}
 
 
-def load_summary(csv_path: Path) -> tuple[str, list[dict]]:
+def load_summary(csv_path: Path) -> tuple[str, list[dict[str, Any]]]:
     """Load a summary CSV and return (model_name, list-of-year-dicts)."""
     rows = []
     model_name = None
@@ -123,7 +124,7 @@ def find_latest_files(out_data: Path = OUT_DATA) -> dict[str, tuple[Path, Path]]
     return {m: (summaries[m], totals[m]) for m in models_found}
 
 
-def build_report_data(file_map: dict[str, tuple[Path, Path]]) -> dict:
+def build_report_data(file_map: dict[str, tuple[Path, Path]]) -> dict[str, Any]:
     """Build the full report data structure."""
     models = []
 

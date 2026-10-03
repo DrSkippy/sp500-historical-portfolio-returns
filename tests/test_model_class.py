@@ -6,15 +6,15 @@ from returns.models import Model
 
 class TestModel(unittest.TestCase):
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.model = Model()
         self.model.model_config(datetime.datetime(2020, 1, 1), years=2)
 
-    def test_init(self):
+    def test_init(self) -> None:
         self.assertEqual(self.model.init_capital, 10000)
         # Add more assertions here to test initial state
 
-    def test_model_config(self):
+    def test_model_config(self) -> None:
         start_date = datetime.datetime(2020, 1, 1)
         self.model.model_config(start_date, years=2)
         self.assertEqual(self.model.capital, 10000)
@@ -23,7 +23,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(self.model.end_date, datetime.datetime(2021, 12, 31))
         # Add more assertions here to test state after configuration
 
-    def test_first_trade(self):
+    def test_first_trade(self) -> None:
         self.model.capital = 10000
         date = datetime.datetime(2020, 1, 1)
         price = [100, 0]  # Example price
@@ -33,7 +33,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(len(self.model.trades), 1)
         self.assertTupleEqual(self.model.trades[0], (date, [100, 0], 100, 0, 100))
 
-    def test_last_trade(self):
+    def test_last_trade(self) -> None:
         self.model.shares = 100
         self.model.capital = 0
         date = datetime.datetime(2021, 1, 1)
@@ -44,7 +44,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(len(self.model.trades), 1)
         self.assertTupleEqual(self.model.trades[0], (date, [100, 0], -100, 10000, 0))
 
-    def test_daily_trade(self):
+    def test_daily_trade(self) -> None:
         # Window 1 year
         self.model.end_date = datetime.datetime(2021, 1, 1)
         _shares = self.model.shares
@@ -63,7 +63,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(self.model.capital, _capital)
         self.assertEqual(len(self.model.trades), _len_trades)
 
-    def test_trade_first(self):
+    def test_trade_first(self) -> None:
         # Test the 'trade' method by simulating different scenarios
         # Example: self.model.trade(date, price)
         # Add assertions here
@@ -82,7 +82,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(self.model.last_trigger)
         self.assertIsNone(skip)
 
-    def test_trade_daily(self):
+    def test_trade_daily(self) -> None:
         # Test the 'trade' method by simulating different scenarios
         # Example: self.model.trade(date, price)
         # Add assertions here
@@ -99,7 +99,7 @@ class TestModel(unittest.TestCase):
         self.assertTrue(self.model.last_trigger)
         self.assertEqual(skip, datetime.datetime(2021, 12, 25, 0, 0))
 
-    def test_trade_last(self):
+    def test_trade_last(self) -> None:
         # Test the 'trade' method by simulating different scenarios
         # Example: self.model.trade(date, price)
         # Add assertions here
@@ -116,7 +116,7 @@ class TestModel(unittest.TestCase):
         self.assertFalse(self.model.last_trigger)
         self.assertIsNone(skip)
 
-    def test_status(self):
+    def test_status(self) -> None:
         # Test the 'status' method by checking its output
         self.model.capital = 10000
         date = datetime.datetime(2020, 1, 1)
@@ -133,14 +133,14 @@ class TestModel(unittest.TestCase):
         )
         print(" ".join(self.model.status()))
 
-    def test_yearly_returns(self):
+    def test_yearly_returns(self) -> None:
         result = self.model.yearly_returns(1.5, 1)
         self.assertAlmostEqual(result, math.exp(math.log(1.5)) - 1)
         self.assertAlmostEqual(self.model.yearly_returns(1.5, 2), math.sqrt(1.5) - 1)
         self.assertAlmostEqual(self.model.yearly_returns(-1.5, 2), 0)
         self.assertAlmostEqual(self.model.yearly_returns(1.5, 0), 0)
 
-    def test_total_returns(self):
+    def test_total_returns(self) -> None:
         # Test the 'total_returns' method by simulating trades
         # Example: self.model.total_returns()
         # Add assertions here

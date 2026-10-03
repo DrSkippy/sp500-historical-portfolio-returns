@@ -3,7 +3,9 @@ import pytest
 from returns.monthly_returns import OFFSET, MonthlyReturns
 
 
-def _make_monthly_returns(n: int = 60, prices: list | None = None) -> MonthlyReturns:
+def _make_monthly_returns(
+    n: int = 60, prices: list[float] | None = None
+) -> MonthlyReturns:
     """Build a MonthlyReturns from synthetic price data."""
     if prices is None:
         prices = [float(i + 1) for i in range(n)]
@@ -13,12 +15,12 @@ def _make_monthly_returns(n: int = 60, prices: list | None = None) -> MonthlyRet
 
 
 class TestMonthlyReturns:
-    def test_length(self):
+    def test_length(self) -> None:
         n = 60
         mr = _make_monthly_returns(n)
         assert len(mr.returns) == n - OFFSET
 
-    def test_return_values(self):
+    def test_return_values(self) -> None:
         n = 60
         prices = [float(i + 1) for i in range(n)]
         mr = _make_monthly_returns(n, prices)
@@ -26,7 +28,7 @@ class TestMonthlyReturns:
         expected = (prices[OFFSET] - prices[0]) / prices[OFFSET]
         assert abs(mr.returns.iloc[0] - expected) < 1e-10
 
-    def test_sample_is_numeric(self):
+    def test_sample_is_numeric(self) -> None:
         mr = _make_monthly_returns()
         s = mr.sample()
         assert isinstance(s, float)

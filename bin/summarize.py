@@ -1,10 +1,16 @@
 if __name__ == "__main__":
     import argparse
     import glob
+    import logging
     import sys
 
     import returns.data
-    from returns.data import *
+    from returns.data import (
+        create_combined_data_file,
+        create_summary_files,
+        logger,
+        use_dataset,
+    )
 
     parser = argparse.ArgumentParser(description="Summarize backtest output CSVs.")
     parser.add_argument(
@@ -18,7 +24,6 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         stream=sys.stdout,
-        filemode="w",
     )
     use_dataset(args.dataset)
     create_combined_data_file()

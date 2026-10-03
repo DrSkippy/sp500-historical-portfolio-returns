@@ -4,6 +4,7 @@ import json
 import locale
 import logging
 import os
+from typing import Any, Iterable
 
 import pandas as pd
 import yaml
@@ -32,7 +33,7 @@ combined_sp500_index = sp500_index
 combined_interest_index = 7 + interest_index
 
 
-def use_dataset(name):
+def use_dataset(name: str) -> dict[str, Any]:
     """
     Point the module-level paths and price column at a dataset from config.yaml.
 
@@ -44,7 +45,7 @@ def use_dataset(name):
     """
     global sp500_input_path, combined_output_path, out_data_path, sp500_index, combined_sp500_index
     with open(config_path, "r") as infile:
-        cfg = yaml.safe_load(infile)["datasets"][name]
+        cfg: dict[str, Any] = yaml.safe_load(infile)["datasets"][name]
     with open(cfg["price_path"], "r") as infile:
         header = next(csv.reader(infile, delimiter="\t"))
     sp500_input_path = cfg["price_path"]
@@ -56,7 +57,7 @@ def use_dataset(name):
     return cfg
 
 
-def get_interest_data():
+def get_interest_data() -> tuple[dict[int, list[float]], list[str]]:
     """
     Reads interest data from a TSV file.
 
@@ -84,14 +85,14 @@ def get_interest_data():
     return interest_data, header
 
 
-def get_sp500_data():
+def get_sp500_data() -> tuple[list[list[Any]], list[str]]:
     """
     Reads S&P 500 data from a TSV file.
 
     Returns:
     tuple: A tuple containing the sorted data (with dates and values) and the header.
     """
-    parsed_data = []
+    parsed_data: list[list[Any]] = []
 
     with open(sp500_input_path, "r") as infile:
         reader = csv.reader(infile, delimiter="\t")
@@ -115,7 +116,7 @@ def get_sp500_data():
     return parsed_data, header
 
 
-def get_combined_sp500_interest_data():
+def get_combined_sp500_interest_data() -> tuple[list[list[Any]], list[str]]:
     """
     Reads S&P 500 and interest data from TSV files.
 
@@ -135,7 +136,7 @@ def get_combined_sp500_interest_data():
     return result, sp500_header + interest_header
 
 
-def create_combined_data_file():
+def create_combined_data_file() -> None:
     """
     Creates a combined CSV file with data from all model runs.
     """
@@ -147,7 +148,9 @@ def create_combined_data_file():
             writer.writerow(row)
 
 
-def get_model_run_outputs(suffix, years=[1, 2, 3]):
+def get_model_run_outputs(
+    suffix: str, years: Iterable[int] = (1, 2, 3)
+) -> tuple[dict[int, list[list[Any]]], list[str] | None, str]:
     """
     Reads data from CSV files for specified years and returns the data along with headers.
 
@@ -158,8 +161,8 @@ def get_model_run_outputs(suffix, years=[1, 2, 3]):
     Returns:
     tuple: A dictionary containing data for each year and the header of the CSV files.
     """
-    results = {}
-    header = None
+    results: dict[int, list[list[Any]]] = {}
+    header: list[str] | None = None
 
     logger.info(f"Reading model run data")
     for year in years:
@@ -171,7 +174,7 @@ def get_model_run_outputs(suffix, years=[1, 2, 3]):
             header = next(reader)  # Reading the header
 
             # Process each row
-            data = []
+            data: list[list[Any]] = []
             for row in reader:
                 date = datetime.datetime.strptime(row[0][:10], FMT_out)
                 data.append([date] + row[1:])
@@ -183,7 +186,9 @@ def get_model_run_outputs(suffix, years=[1, 2, 3]):
     return results, header, f"{out_data_path}summary_{suffix}"
 
 
-def create_summary_file(results, header, filename):
+def create_summary_file(
+    results: dict[int, list[list[Any]]], header: list[str] | None, filename: str
+) -> tuple[str, str]:
     """
     Creates a summary of the results and writes it to a CSV file.
 
@@ -209,7 +214,7 @@ def create_summary_file(results, header, filename):
     return filename, json_filename
 
 
-def create_summary_files(files):
+def create_summary_files(files: Iterable[str]) -> list[tuple[str, str]]:
     """
     Prompts the user to select a file suffix from a list of file names.
 
@@ -238,7 +243,7 @@ def create_summary_files(files):
     return files_created
 
 
-def read_summary_data(filename):
+def read_summary_data(filename: str) -> tuple[pd.DataFrame, dict[str, list[float]]]:
     """
     Reads summary data from a CSV file. Returns a dataframe.
     :param filename:
@@ -249,11 +254,11 @@ def read_summary_data(filename):
         ".csv", ".json"
     )
     with open(json_filename, "r") as infile:
-        total_returns_by_period = json.load(infile)
+        total_returns_by_period: dict[str, list[float]] = json.load(infile)
     return df, total_returns_by_period
 
 
-def get_model_comparison_data(files, year=10):
+def get_model_comparison_data(files: Iterable[str], year: int = 10) -> pd.DataFrame:
     rdata = []
     for p in files:
         d, h = read_summary_data(p)

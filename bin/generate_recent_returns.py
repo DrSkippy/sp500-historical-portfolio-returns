@@ -14,6 +14,7 @@ import json
 import os
 import sys
 from datetime import date, datetime
+from typing import Any, Sequence
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import returns.data
@@ -23,7 +24,7 @@ from returns.db import get_db_settings, get_quotes
 OUTPUT_DIR = "trading_strategies_report/data"
 
 
-def compute_returns(prices, window):
+def compute_returns(prices: Sequence[float], window: int) -> list[float]:
     """Compute rolling return: (close[i] - close[i-window]) / close[i-window]."""
     return [
         (prices[i] - prices[i - window]) / prices[i - window]
@@ -31,7 +32,7 @@ def compute_returns(prices, window):
     ]
 
 
-def compute_stats(values):
+def compute_stats(values: Sequence[float]) -> dict[str, float]:
     """Compute mean, median, std, p10, p25, p75, p90."""
     if not values:
         return {}
@@ -46,7 +47,7 @@ def compute_stats(values):
     variance = sum((v - mean) ** 2 for v in values) / n
     std = variance**0.5
 
-    def percentile(p):
+    def percentile(p: float) -> float:
         idx = p / 100.0 * (n - 1)
         lo, hi = int(idx), min(int(idx) + 1, n - 1)
         return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (idx - lo)
@@ -62,13 +63,18 @@ def compute_stats(values):
     }
 
 
-def percentile_rank(hist_values, recent_value):
+def percentile_rank(hist_values: Sequence[float], recent_value: float) -> float:
     """Fraction of historical values strictly less than recent_value, * 100."""
     count = sum(1 for v in hist_values if v < recent_value)
     return count / len(hist_values) * 100.0
 
 
-def build_recent_entries(dated_prices, window, n_recent, hist_values):
+def build_recent_entries(
+    dated_prices: Sequence[tuple[Any, float]],
+    window: int,
+    n_recent: int,
+    hist_values: Sequence[float],
+) -> list[dict[str, Any]]:
     """
     Compute non-overlapping recent returns from the tail of dated_prices.
     dated_prices: list of (date, price), sorted ascending
@@ -80,13 +86,13 @@ def build_recent_entries(dated_prices, window, n_recent, hist_values):
         return []
 
     # Take non-overlapping periods from the end: every `window`-th point
-    entries = []
+    entries: list[dict[str, Any]] = []
     prices = [p for _, p in dated_prices]
     dates = [d for d, _ in dated_prices]
     n = len(prices)
 
     # Build indices: start from the last valid point, step back by window
-    indices = []
+    indices: list[int] = []
     i = n - 1
     while i >= window and len(indices) < n_recent:
         indices.append(i)
@@ -107,7 +113,7 @@ def build_recent_entries(dated_prices, window, n_recent, hist_values):
     return entries
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build recent returns data for the report site."
     )
@@ -139,7 +145,7 @@ def main():
         print(
             f"Connecting to PostgreSQL at {db['host']}:{db['port']}/{db['dbname']}..."
         )
-        spy_rows = get_quotes(symbol)
+        spy_rows: list[tuple[Any, float]] = list(get_quotes(symbol))
     else:
         spy_rows = [
             (row[0].date(), row[returns.data.sp500_index]) for row in sp500_data

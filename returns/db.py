@@ -6,14 +6,16 @@ set in `.envrc` and loaded by direnv (see `.envrc.example`):
     PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
 """
 
+import datetime
 import os
+from typing import Any, Callable
 
 import psycopg
 
 DB_ENV_VARS = ("PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE")
 
 
-def get_db_settings():
+def get_db_settings() -> dict[str, Any]:
     """
     Read database connection settings from the environment.
 
@@ -38,12 +40,16 @@ def get_db_settings():
     }
 
 
-def get_connection():
+def get_connection() -> psycopg.Connection[Any]:
     """Open a psycopg connection using settings from the environment."""
     return psycopg.connect(**get_db_settings())
 
 
-def get_quotes(symbol, namespace="NASDAQ", connect=get_connection):
+def get_quotes(
+    symbol: str,
+    namespace: str = "NASDAQ",
+    connect: Callable[[], psycopg.Connection[Any]] = get_connection,
+) -> list[tuple[datetime.date, float]]:
     """
     Query closing prices for a symbol from the quotes table, sorted ascending by date.
 

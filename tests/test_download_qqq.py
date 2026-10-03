@@ -1,14 +1,16 @@
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 spec = importlib.util.spec_from_file_location(
     "download_qqq", Path(__file__).parent.parent / "bin" / "download_qqq.py"
 )
+assert spec is not None and spec.loader is not None
 download_qqq = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(download_qqq)
 
 
-def make_chart(timestamps, closes):
+def make_chart(timestamps: list[int], closes: list[float | None]) -> dict[str, Any]:
     n = len(timestamps)
     return {
         "meta": {"gmtoffset": -18000},
@@ -30,7 +32,7 @@ def make_chart(timestamps, closes):
     }
 
 
-def test_chart_to_rows_newest_first_and_formatted():
+def test_chart_to_rows_newest_first_and_formatted() -> None:
     # 1999-03-10 14:30 UTC and 1999-03-11 14:30 UTC (market open, US Eastern)
     rows = download_qqq.chart_to_rows(
         make_chart([921076200, 921162600], [51.0625, 51.3125])
@@ -39,7 +41,7 @@ def test_chart_to_rows_newest_first_and_formatted():
     assert rows[0][4:] == ["51.3125", "46.1812", "100"]
 
 
-def test_chart_to_rows_skips_incomplete_days():
+def test_chart_to_rows_skips_incomplete_days() -> None:
     rows = download_qqq.chart_to_rows(
         make_chart([921076200, 921162600], [51.0625, None])
     )

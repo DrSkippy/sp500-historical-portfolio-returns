@@ -1,9 +1,15 @@
+from typing import Any, Mapping, Sequence
+
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from matplotlib import pyplot as plt
 
+# One aggregate_returns() summary row; see get_df_aggregate_returns_by_period for columns
+ReturnStats = tuple[Any, ...]
 
-def calculate_mode(hist_data):
+
+def calculate_mode(hist_data: tuple[npt.NDArray[Any], npt.NDArray[Any]]) -> float:
     """
     Calculates the mode of a histogram as the midpoint between the two bins with the highest counts.
 
@@ -13,13 +19,18 @@ def calculate_mode(hist_data):
     Returns:
     float: The mode of the histogram.
     """
-    return (
-        hist_data[1][np.argmax(hist_data[0])]
-        + hist_data[1][np.argmax(hist_data[0]) - 1]
-    ) / 2
+    return float(
+        (
+            hist_data[1][np.argmax(hist_data[0])]
+            + hist_data[1][np.argmax(hist_data[0]) - 1]
+        )
+        / 2
+    )
 
 
-def aggregate_returns(returns_data):
+def aggregate_returns(
+    returns_data: Sequence[Sequence[Any]],
+) -> tuple[ReturnStats, list[float]]:
     """
     returns_data = ["date",
                     "frac_return",
@@ -68,7 +79,7 @@ def aggregate_returns(returns_data):
     ), total_returns.tolist()
 
 
-def show_metrics(return_stats):
+def show_metrics(return_stats: ReturnStats) -> None:
     print(f"### AGGREGATE RETURNS ### {return_stats[2]} ###")
     print(f"Sample Size              = {return_stats[0]}")
     print(f"Time span                = {return_stats[1]:5.1f} years")
@@ -83,7 +94,9 @@ def show_metrics(return_stats):
     print(f"Mode of Yearly Returns   = {return_stats[11]:5.2%}")
 
 
-def get_aggregate_returns_by_period(data):
+def get_aggregate_returns_by_period(
+    data: Mapping[Any, Sequence[Sequence[Any]]],
+) -> tuple[list[ReturnStats], dict[Any, list[float]]]:
     returns_stats_by_period = []
     total_returns_by_period = {}
     for k, v in data.items():
@@ -93,7 +106,9 @@ def get_aggregate_returns_by_period(data):
     return returns_stats_by_period, total_returns_by_period
 
 
-def get_df_aggregate_returns_by_period(returns_stats_by_period):
+def get_df_aggregate_returns_by_period(
+    returns_stats_by_period: list[ReturnStats],
+) -> pd.DataFrame:
     df = pd.DataFrame(
         returns_stats_by_period,
         columns=[
@@ -115,20 +130,24 @@ def get_df_aggregate_returns_by_period(returns_stats_by_period):
     return df
 
 
-def plot_df(df, columns=None, df2=None):
+def plot_df(
+    df: pd.DataFrame,
+    columns: list[str] | None = None,
+    df2: pd.DataFrame | None = None,
+) -> None:
     if columns is None:
         columns = df.columns.to_list()[3:]
     fig, axs = plt.subplots(nrows=len(columns), ncols=1)
     fig.set_size_inches(8, 4 * len(columns))
     for ax, column in zip(axs.reshape(-1), columns):
-        df.plot("time_span", column, ax=ax)
+        df.plot(x="time_span", y=column, ax=ax)
         if df2 is not None:
-            df2.plot("time_span", column, ax=ax)
+            df2.plot(x="time_span", y=column, ax=ax)
         ax.set_ylabel(column.replace("_", " ").capitalize())
         ax.set_xlabel("Period (Years)")
 
 
-def plot_histograms(total_returns_by_period):
+def plot_histograms(total_returns_by_period: dict[Any, list[float]]) -> None:
     fig, axs = plt.subplots(nrows=len(total_returns_by_period), ncols=1)
     fig.set_size_inches(8, 4 * len(total_returns_by_period))
     for ax, (k, v) in zip(axs.reshape(-1), total_returns_by_period.items()):
@@ -136,7 +155,7 @@ def plot_histograms(total_returns_by_period):
         ax.set_title(f"Sample Returns {k}")
 
 
-def plot_period_comparison_data(drf):
+def plot_period_comparison_data(drf: pd.DataFrame) -> None:
     drf.plot.scatter("mean_total_returns", "model_name")
     drf.plot.scatter("mean_yearly_compound_returns", "model_name")
     drf.plot.scatter("median_total_returns", "model_name")

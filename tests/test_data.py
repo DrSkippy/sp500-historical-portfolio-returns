@@ -1,4 +1,6 @@
 import datetime
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,7 +15,7 @@ from returns.data import (
 
 
 @pytest.fixture
-def sp500_file(tmp_path):
+def sp500_file(tmp_path: Path) -> Path:
     content = (
         "Date\tOpen\tHigh\tLow\tClose\tAdj Close**\tVolume\n"
         "Jan 01, 2020\t100.0\t102.0\t99.0\t101.0\t101.0\t1000\n"
@@ -25,50 +27,64 @@ def sp500_file(tmp_path):
 
 
 @pytest.fixture
-def interest_file(tmp_path):
+def interest_file(tmp_path: Path) -> Path:
     content = "observation_date\tGS1\n" "2020-01-01\t1.50\n"
     f = tmp_path / "interest.tab"
     f.write_text(content)
     return f
 
 
-def test_get_sp500_data_row_count(sp500_file, monkeypatch):
+def test_get_sp500_data_row_count(
+    sp500_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(returns.data, "sp500_input_path", str(sp500_file))
     data, _ = get_sp500_data()
     assert len(data) == 2
 
 
-def test_get_sp500_data_date_parsed(sp500_file, monkeypatch):
+def test_get_sp500_data_date_parsed(
+    sp500_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(returns.data, "sp500_input_path", str(sp500_file))
     data, _ = get_sp500_data()
     assert data[0][0] == datetime.datetime(2020, 1, 1)
 
 
-def test_get_sp500_data_adj_close(sp500_file, monkeypatch):
+def test_get_sp500_data_adj_close(
+    sp500_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(returns.data, "sp500_input_path", str(sp500_file))
     data, _ = get_sp500_data()
     assert data[0][5] == 101.0  # Adj Close** at sp500_index=5
 
 
-def test_get_interest_data_year_key(interest_file, monkeypatch):
+def test_get_interest_data_year_key(
+    interest_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     data, _ = get_interest_data()
     assert 2020 in data
 
 
-def test_get_interest_data_value_count(interest_file, monkeypatch):
+def test_get_interest_data_value_count(
+    interest_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     data, _ = get_interest_data()
     assert len(data[2020]) == 1
 
 
-def test_get_interest_data_value_parsed(interest_file, monkeypatch):
+def test_get_interest_data_value_parsed(
+    interest_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     data, _ = get_interest_data()
     assert abs(data[2020][0] - 0.015) < 1e-10
 
 
-def test_combined_row_length(sp500_file, interest_file, monkeypatch):
+def test_combined_row_length(
+    sp500_file: Path, interest_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(returns.data, "sp500_input_path", str(sp500_file))
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     data, _ = get_combined_sp500_interest_data()
@@ -76,14 +92,18 @@ def test_combined_row_length(sp500_file, interest_file, monkeypatch):
     assert len(data[0]) == 8  # 7 SP500 + 1 interest
 
 
-def test_combined_sp500_index(sp500_file, interest_file, monkeypatch):
+def test_combined_sp500_index(
+    sp500_file: Path, interest_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(returns.data, "sp500_input_path", str(sp500_file))
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     data, _ = get_combined_sp500_interest_data()
     assert data[0][combined_sp500_index] == 101.0
 
 
-def test_combined_interest_index(sp500_file, interest_file, monkeypatch):
+def test_combined_interest_index(
+    sp500_file: Path, interest_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(returns.data, "sp500_input_path", str(sp500_file))
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     data, _ = get_combined_sp500_interest_data()
@@ -91,7 +111,9 @@ def test_combined_interest_index(sp500_file, interest_file, monkeypatch):
 
 
 @pytest.fixture
-def dataset_config(tmp_path, monkeypatch):
+def dataset_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path]:
     prices = tmp_path / "QQQ.tab"
     prices.write_text(
         "Date\tOpen\tHigh\tLow\tClose*\tAdj Close**\tVolume\n"
@@ -120,7 +142,7 @@ def dataset_config(tmp_path, monkeypatch):
     return tmp_path, prices
 
 
-def test_use_dataset_sets_paths(dataset_config):
+def test_use_dataset_sets_paths(dataset_config: tuple[Path, Path]) -> None:
     tmp_path, prices = dataset_config
     returns.data.use_dataset("qqq")
     assert returns.data.sp500_input_path == str(prices)
@@ -128,7 +150,11 @@ def test_use_dataset_sets_paths(dataset_config):
     assert returns.data.out_data_path == f"{tmp_path}/out/"
 
 
-def test_use_dataset_selects_price_column(dataset_config, interest_file, monkeypatch):
+def test_use_dataset_selects_price_column(
+    dataset_config: tuple[Path, Path],
+    interest_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     returns.data.use_dataset("qqq")
     assert returns.data.combined_sp500_index == 4
@@ -137,8 +163,10 @@ def test_use_dataset_selects_price_column(dataset_config, interest_file, monkeyp
 
 
 def test_create_combined_data_file_writes_dataset_path(
-    dataset_config, interest_file, monkeypatch
-):
+    dataset_config: tuple[Path, Path],
+    interest_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     tmp_path, _ = dataset_config
     monkeypatch.setattr(returns.data, "interest_input_path", str(interest_file))
     returns.data.use_dataset("qqq")

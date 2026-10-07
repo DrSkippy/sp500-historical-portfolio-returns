@@ -1,0 +1,6 @@
+[
+ {"insurance_frac": 0.05, "premium_rate": 0.004,  "insurance_deductible": 0.12, "coverage_ratio": 1.0},
+ {"insurance_frac": 0.05, "premium_rate": 0.0075, "insurance_deductible": 0.07, "coverage_ratio": 1.0},
+ {"insurance_frac": 0.05, "premium_rate": 0.012,  "insurance_deductible": 0.05, "coverage_ratio": 2.0},
+ {"insurance_frac": 0.05, "premium_rate": 0.0025, "insurance_deductible": 0.07, "coverage_ratio": 2.0}
+]

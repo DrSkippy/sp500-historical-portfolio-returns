@@ -295,7 +295,9 @@ sp500-historical-portfolio-returns/
 │   ├── js/                    # app.js, charts.js, recent_returns_app.js
 │   ├── strategies/            # buy-hold.html, kelly.html, insurance.html
 │   └── data/                  # report_data*.json, recent_returns_data*.json (generated, not committed)
-├── notebooks/                 # Exploratory Jupyter notebooks
+├── docs/
+│   └── insurance_parameter_scan.md  # Insurance premium/deductible/coverage scan vs Kelly
+├── notebooks/                 # Exploratory notebooks; insurance_scan/ holds the scan scripts + results
 ├── .claude/agents/
 │   └── test-runner.md         # Claude Code subagent that runs the test suite
 ├── config.yaml                # Datasets and all backtest/model/report calibration
@@ -362,6 +364,9 @@ premium. Both are rebalanced back to target every `insurance_period` days.
   out at most once; it is renewed at the next scheduled rebalance.
 
 Parameters live under `models.insurance` in `config.yaml`.
+
+A scan of premium, deductible and coverage against the best Kelly variant, with an assessment
+of which settings are realistic, is in [docs/insurance_parameter_scan.md](docs/insurance_parameter_scan.md).
 
 ## Statistical output
 

@@ -239,6 +239,11 @@ cash             ×= (1 + treasury_rate) ^ (days_elapsed / 365)</pre>
         <li>Low deductibles (9%) generally do best among the Insurance variants, since they
             pay out more often for the same premium.</li>
       </ul>
+      <p>Could different insurance terms beat Fractional Kelly? A scan of premium, deductible and
+        coverage finds that insurance only beats the best Kelly variant when the premium is at or
+        below what the policy historically paid out — a price no seller would offer. See the
+        <a href="https://github.com/DrSkippy/sp500-historical-portfolio-returns/blob/main/docs/insurance_parameter_scan.md">insurance
+        parameter scan</a> for the full results.</p>
       <p>Use the <a href="../index.html#section-distribution">Distribution Explorer</a>
         to compare the Insurance tail behaviour directly against Buy &amp; Hold and Kelly
         at your target horizon. The left tail (worst outcomes) is where Insurance strategies

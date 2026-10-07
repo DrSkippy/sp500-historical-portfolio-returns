@@ -10,7 +10,7 @@ Scripts live in `bin/`.
 ### Running tests and checks
 
 ```bash
-poetry run pytest --cov=returns --cov-report=term-missing tests/
+poetry run pytest --cov=returns --cov=bin --cov-report=term-missing tests/
 poetry run black --check .
 poetry run mypy            # strict; config in pyproject.toml covers returns/, bin/, tests/
 ```
@@ -42,7 +42,12 @@ only `gh-pages` carries them.
     counts); bin `i` spans `edges[i]..edges[i+1]`. The mode is that bin's centre. (Before
     2026-10-07 it used `edges[i-1]`, one bin low and wrapping at `i == 0`.)
   - `model_name` mutation: `model_config()` must assign (`=`), never append (`+=`), or the
-    name accumulates across the ~5,800 calls made per full backtest run.
+    name accumulates across the ~5,800 calls made per full backtest run. Names are written to
+    output files and parsed back by `parse_model_name`; keep `format_*_name` and it in sync.
+  - `InsuranceModel` insures the **stock, not the cash**: payout = `coverage_ratio ×
+    insured_value × (|loss| − deductible)` into cash; premium = `premium_rate` × insured stock
+    value per year, charged daily; at most one payout per policy period. Worked example
+    ($12 cash, $1,000 stock → $250 pays $570) is pinned in `tests/test_insurance_policy.py`.
 - **Prefer `pytest`-style functions and fixtures** over `unittest.TestCase` for new tests.
   Use `TestCase` only when extending an existing suite that already uses it.
 

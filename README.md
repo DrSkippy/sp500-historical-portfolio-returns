@@ -15,7 +15,7 @@ switch in the header). See [Deploy the report site](#deploy-the-report-site).
 |---|---|
 | **Buy & Hold** | Buy at open, hold to end date, sell |
 | **Fractional Kelly** | Periodic stock/bond rebalancing at a fixed allocation |
-| **Insurance** | Kelly variant with loss-triggered insurance payouts |
+| **Insurance** | Near-full equity plus crash insurance on the stock: pays a premium, receives the loss beyond a deductible |
 
 ### Grid search parameters
 
@@ -43,11 +43,24 @@ set in `.envrc` (gitignored) and loaded by direnv. There are no defaults in code
 variable raises a clear error. The quotes live in the `stock_quotes` database on the home-lab
 PostgreSQL cluster (`192.168.1.91:5434`, table `quotes`).
 
-## Usage
+## Configuration
 
-All commands use `poetry run` — never invoke `python` directly.
+Everything the backtest is calibrated with lives in `config.yaml`, validated at load time by
+Pydantic models in `returns/config.py`: unknown keys and bad values are errors, and relative
+paths resolve against the directory holding `config.yaml`. Secrets never go there — database
+credentials come from `.envrc`. Logging is configured in `logging.yaml`.
 
-### Datasets (`config.yaml`)
+| Section | Contents |
+|---|---|
+| `datasets` | One entry per price series (see below) |
+| `backtest` | Start-date stride (3 days), skip-ahead padding, starting capital, holding periods (1–15 years), histogram bins |
+| `models` | The Kelly and Insurance grids, plus the Insurance premium, coverage and loss window |
+| `recent_returns` | Daily / weekly / monthly horizons for the recent-returns page |
+| `report` | Report output directory and the holding periods whose full distributions are published |
+| `monthly_returns` | Settings for `get_monthly_returns.py` |
+| `sources` | Interest-rate file and the PostgreSQL quotes namespace |
+
+### Datasets
 
 `runner.py`, `summarize.py`, `generate_report.py` and `generate_recent_returns.py` take
 `--dataset <name>`, selecting an entry under `datasets:` in `config.yaml` (default `sp500`;
@@ -65,7 +78,10 @@ also `qqq`). Each entry defines:
 | `recent_symbol` | `generate_recent_returns.py` | Ticker for recent quotes (`SPY`, `QQQ`) |
 | `recent_data` | `generate_recent_returns.py` | Recent-returns JSON written to `trading_strategies_report/data/` |
 
-Database credentials are never in `config.yaml`; they come from `.envrc` (see above).
+
+## Usage
+
+All commands use `poetry run` — never invoke `python` directly.
 
 ### Run the full backtest
 
@@ -74,9 +90,10 @@ poetry run python bin/runner.py
 ```
 
 Dispatches 225 tasks via `multiprocessing.Pool`, one per (years, model) combination.
-Each worker loads data independently and writes a CSV to `./out_data/`. Warnings go to `app1.log`; pass `--log-level INFO` (or `DEBUG`) for a per-trade trace, but expect a very large log (tens to hundreds of GB for a full run).
-Each window stops reading data once its last trade is made. Insurance variants trade daily and
-dominate the runtime; the long-horizon (15-year) Insurance tasks take several minutes each.
+Each worker loads data independently and writes a CSV to `./out_data/`. Warnings go to
+`app1.log`; pass `--log-level INFO` (or `DEBUG`) for a per-trade trace, but expect a very large
+log (tens to hundreds of GB for a full run). Insurance variants check for losses every trading
+day and dominate the runtime: a full S&P 500 run takes about 18 minutes on 24 cores, QQQ about 5.
 
 ### Generate summary statistics
 
@@ -87,7 +104,8 @@ poetry run python bin/summarize.py
 ```
 
 Produces per-model summary CSVs and JSON files in `./out_data/`, and rewrites the dataset's
-`combined_path` CSV.
+`combined_path` CSV. It re-summarizes every run still in `out_data/`; delete old
+`returns_*` files first if you don't need them.
 
 ### Generate the report data
 
@@ -123,6 +141,19 @@ curves, risk over time, distribution explorer, risk/return scatter, investment a
 recent-returns page (`recent_returns.html`), and static strategy description pages for each
 of the three strategy families. Add `?dataset=qqq` to either page for QQQ.
 
+### Refresh everything
+
+```bash
+for ds in sp500 qqq; do
+  poetry run python bin/runner.py --dataset $ds
+  poetry run python bin/summarize.py --dataset $ds
+  poetry run python bin/generate_report.py --dataset $ds
+  poetry run python bin/generate_recent_returns.py --dataset $ds
+done
+```
+
+Then [deploy](#deploy-the-report-site).
+
 ### Deploy the report site
 
 The site is published on GitHub Pages from an orphan **`gh-pages`** branch that holds only the
@@ -152,16 +183,26 @@ poetry run black --check .
 poetry run mypy                 # strict mode; covers returns/, bin/ and tests/ (see pyproject.toml)
 ```
 
-60 tests, ~76% coverage. `black` and `mypy --strict` must both pass before merge.
+124 tests, ~96% coverage over `returns/` and `bin/`. `black` and `mypy --strict` must both pass
+before merge.
+
+`tests/test_golden_master.py` runs the whole pipeline on synthetic data and compares it with
+`tests/golden/pipeline_snapshot.json`, so a refactor that changes any result fails. When a
+change is *meant* to change results, regenerate the snapshot in the same commit:
+
+```bash
+UPDATE_GOLDEN=1 poetry run pytest tests/test_golden_master.py
+```
 
 ### Compute 30-day rolling returns
 
 ```bash
-poetry run python bin/get_monthly_returns.py
+poetry run python bin/get_monthly_returns.py [--dataset qqq] [--no-plot]
 ```
 
-Calculates `(current - prior) / current` over a 30-day offset across the full price history
-and writes `out_data/monthly_returns.csv`.
+Calculates `(current - prior) / current` over a 30-day offset across the full price history,
+logs a sample and summary, shows a histogram (skip it with `--no-plot`) and writes
+`out_data/monthly_returns.csv`.
 
 ### Update SP500 data
 
@@ -231,6 +272,7 @@ sp500-historical-portfolio-returns/
 │   ├── test_model_class.py
 │   ├── test_kelly_model_class.py
 │   ├── test_insurance_class.py
+│   ├── test_insurance_policy.py   # insurance payout/premium semantics ($12 cash / $1000 asset)
 │   ├── test_analysis.py
 │   ├── test_data.py
 │   ├── test_db.py
@@ -264,7 +306,7 @@ sp500-historical-portfolio-returns/
 **`data/SP500.tab`** — tab-separated daily prices, ~17,500 rows
 - Source: https://seekingalpha.com/symbol/SP500/historical-price-quotes
 - Columns: `Date`, `Open`, `High`, `Low`, `Close*`, `Adj Close**`, `Volume`
-- Dates in `"%b %d, %Y"` format; numbers may contain locale-formatted commas
+- Dates in `"%b %d, %Y"` format; numbers may contain comma thousands separators
 
 **`data/QQQ.tab`** — QQQ daily prices in the same layout, ~6,900 rows
 - Source: Yahoo Finance chart API (`bin/download_qqq.py`)
@@ -285,8 +327,8 @@ sp500-historical-portfolio-returns/
 
 ### Buy & Hold
 
-Buys all available capital in S&P 500 shares at the first data point inside the window,
-holds, then sells at the end. Baseline for comparison.
+Buys the index with all capital at the first data point inside the window, holds, then sells
+at the end. Baseline for comparison.
 
 ### Fractional Kelly (`KellyModel`)
 
@@ -325,7 +367,7 @@ For each (model, holding period) combination the framework computes:
 |---|---|
 | Mean / Median returns | Central tendency of fractional and annualised returns |
 | Standard deviation | Volatility across start dates |
-| Mode | Histogram-estimated peak of the return distribution |
+| Mode | Centre of the most populated histogram bin (45 bins) |
 | Fraction losing | Share of start dates that ended with a loss |
 | Yearly compound rate | Geometric annualised return |
 
@@ -339,6 +381,7 @@ For each (model, holding period) combination the framework computes:
 | `seaborn` | ^0.13 | Statistical visualisation in notebooks (`notebook` group) |
 | `requests` | ^2.34 | Yahoo Finance HTTP calls |
 | `pyyaml` | ^6.0 | Config file loading |
+| `pydantic` | ^2.13 | Config validation |
 | `psycopg[binary]` | ^3.3 | PostgreSQL access for recent quotes |
 | `pytest` | ^9.1 | Test framework (`dev` group) |
 | `pytest-cov` | ^7.1 | Coverage reporting (`dev` group) |

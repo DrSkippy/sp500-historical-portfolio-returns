@@ -14,7 +14,7 @@ Your job is to run the pytest suite, interpret its output, and report results cl
 Always run via Poetry:
 
 ```bash
-poetry run pytest --cov=returns --cov-report=term-missing tests/ -v
+poetry run pytest --cov=returns --cov=bin --cov-report=term-missing tests/ -v
 ```
 
 Append extra pytest args as needed (e.g. `-k test_analysis`).
@@ -30,6 +30,7 @@ Append extra pytest args as needed (e.g. `-k test_analysis`).
 
 ## Key facts about this codebase
 
-- Module under test: `returns/` (models, data, db, analysis, monthly_returns)
+- Code under test: `returns/` (models, types, config, data, db, analysis, monthly_returns) and `bin/` scripts (loaded via `tests.conftest.load_bin_module`)
+- `tests/test_golden_master.py` compares the whole pipeline with `tests/golden/pipeline_snapshot.json`. A failure there means results changed: if the change is intended, regenerate with `UPDATE_GOLDEN=1 poetry run pytest tests/test_golden_master.py`; otherwise it is a regression
 - Test directory: `tests/`
 - Do not use bare `python` — always `poetry run`

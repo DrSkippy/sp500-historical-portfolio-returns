@@ -17,11 +17,19 @@ from returns.data import (
     get_price_data,
     load_dataset,
     parse_number,
+    RunManifest,
     read_summary_data,
     returns_file_suffix,
+    run_returns_files,
+    select_run,
+    write_run_manifest,
     total_returns_path,
 )
-from returns.errors import DatasetConfigError, MissingPriceColumnError
+from returns.errors import (
+    DatasetConfigError,
+    MissingPriceColumnError,
+    NoMatchingRunError,
+)
 from returns.types import RETURNS_CSV_HEADER, SUMMARY_COLUMNS
 
 PRICE_HEADER = "Date\tOpen\tHigh\tLow\tClose*\tAdj Close**\tVolume\n"
@@ -210,3 +218,40 @@ def test_get_model_comparison_data_selects_the_requested_year(tmp_path: Path) ->
     comparison = get_model_comparison_data(summaries, year=2)
     assert comparison["time_span"].tolist() == [2.0, 2.0]
     assert comparison["mean_total_returns"].tolist() == pytest.approx([0.06, 0.12])
+
+
+def manifest(timestamp: str, version: int) -> RunManifest:
+    return RunManifest(
+        timestamp=timestamp,
+        model_version=version,
+        dataset="qqq",
+        years=[1, 2],
+        model_count=1,
+    )
+
+
+def test_select_run_picks_newest_run_of_the_model_version(tmp_path: Path) -> None:
+    write_run_manifest(tmp_path, manifest("2026-01-01_0000", 2))
+    write_run_manifest(tmp_path, manifest("2026-02-01_0000", 2))
+    write_run_manifest(tmp_path, manifest("2026-03-01_0000", 1))  # newer, old model
+    assert select_run(tmp_path, 2).timestamp == "2026-02-01_0000"
+    assert select_run(tmp_path, 2, "2026-01-01_0000").timestamp == "2026-01-01_0000"
+    assert select_run(tmp_path, 1).timestamp == "2026-03-01_0000"
+
+
+def test_select_run_ignores_runs_without_manifest(tmp_path: Path) -> None:
+    write_returns(tmp_path, 1, "Buy_Hold_2026-01-01_0000.csv", VALUES)
+    with pytest.raises(NoMatchingRunError, match="model version 2"):
+        select_run(tmp_path, 2)
+
+
+def test_select_run_unknown_timestamp_raises(tmp_path: Path) -> None:
+    write_run_manifest(tmp_path, manifest("2026-01-01_0000", 2))
+    with pytest.raises(NoMatchingRunError, match="run 2026-09-09_0000"):
+        select_run(tmp_path, 2, "2026-09-09_0000")
+
+
+def test_run_returns_files_only_returns_that_run(tmp_path: Path) -> None:
+    keep = write_returns(tmp_path, 1, "Buy_Hold_2026-01-01_0000.csv", VALUES)
+    write_returns(tmp_path, 1, "Buy_Hold_2026-02-01_0000.csv", VALUES)
+    assert run_returns_files(tmp_path, "2026-01-01_0000") == [keep]

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import pandas as pd
+from pydantic import BaseModel
 
 from returns.analysis import (
     HISTOGRAM_BINS,
@@ -16,7 +17,7 @@ from returns.analysis import (
     get_df_aggregate_returns_by_period,
 )
 from returns.config import AppConfig, DatasetConfig, load_config
-from returns.errors import MissingPriceColumnError
+from returns.errors import MissingPriceColumnError, NoMatchingRunError
 from returns.types import SUMMARY_COLUMNS
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,72 @@ def total_returns_path(summary_path: Path) -> Path:
     return summary_path.with_name(
         summary_path.name.replace("summary", "total_returns").replace(".csv", ".json")
     )
+
+
+class RunManifest(BaseModel):
+    """What produced one backtest run; written by runner.py as ``run_{timestamp}.json``."""
+
+    timestamp: str
+    """Run id, also the suffix of every output file name (``YYYY-MM-DD_HHMM``)."""
+    model_version: int
+    dataset: str
+    years: list[int]
+    model_count: int
+
+
+def run_manifest_path(out_dir: Path, timestamp: str) -> Path:
+    """Path of a run's manifest file."""
+    return out_dir / f"run_{timestamp}.json"
+
+
+def write_run_manifest(out_dir: Path, manifest: RunManifest) -> Path:
+    """Write a run's manifest next to its output files."""
+    path = run_manifest_path(out_dir, manifest.timestamp)
+    path.write_text(manifest.model_dump_json(indent=1) + "\n")
+    return path
+
+
+def find_runs(out_dir: Path) -> list[RunManifest]:
+    """All runs with a manifest in ``out_dir``, oldest first."""
+    manifests = [
+        RunManifest.model_validate_json(path.read_text())
+        for path in out_dir.glob("run_*.json")
+    ]
+    return sorted(manifests, key=lambda m: m.timestamp)
+
+
+def select_run(
+    out_dir: Path, model_version: int, timestamp: str | None = None
+) -> RunManifest:
+    """Choose the run to summarize.
+
+    Args:
+        out_dir: Dataset output directory.
+        model_version: Only runs produced by this model version qualify.
+        timestamp: A specific run id; the newest qualifying run if None.
+
+    Returns:
+        The selected run's manifest.
+
+    Raises:
+        NoMatchingRunError: If no run qualifies. Runs without a manifest (from
+            before manifests existed) never qualify.
+    """
+    runs = [m for m in find_runs(out_dir) if m.model_version == model_version]
+    if timestamp is not None:
+        runs = [m for m in runs if m.timestamp == timestamp]
+    if not runs:
+        wanted = f"run {timestamp} " if timestamp else ""
+        raise NoMatchingRunError(
+            f"No {wanted}for model version {model_version} in {out_dir}; "
+            "run bin/runner.py first"
+        )
+    return runs[-1]
+
+
+def run_returns_files(out_dir: Path, timestamp: str) -> list[Path]:
+    """The returns files belonging to one run."""
+    return sorted(out_dir.glob(f"returns_*_{timestamp}.csv"))
 
 
 def get_model_run_outputs(

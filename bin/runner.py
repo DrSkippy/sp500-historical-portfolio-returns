@@ -14,10 +14,18 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from returns.config import AppConfig, BacktestConfig, load_config
-from returns.data import Row, get_combined_data, load_dataset, returns_file_path
+from returns.data import (
+    Row,
+    RunManifest,
+    get_combined_data,
+    load_dataset,
+    returns_file_path,
+    write_run_manifest,
+)
 from returns.errors import EmptyReturnsError
 from returns.logging_setup import configure_logging
 from returns.models import (
+    MODEL_VERSION,
     STRIDE_DAYS,
     InsuranceModel,
     KellyModel,
@@ -197,10 +205,21 @@ def main() -> None:
     dataset = load_dataset(args.dataset, config)
     dataset.config.out_dir.mkdir(parents=True, exist_ok=True)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
+    specs = list(all_model_specs(config))
+    write_run_manifest(
+        dataset.config.out_dir,
+        RunManifest(
+            timestamp=date_str,
+            model_version=MODEL_VERSION,
+            dataset=args.dataset,
+            years=list(config.backtest.years),
+            model_count=len(specs),
+        ),
+    )
     tasks = [
         (years, class_name, kwargs, date_str, args.dataset, config)
         for years in config.backtest.years
-        for class_name, kwargs in all_model_specs(config)
+        for class_name, kwargs in specs
     ]
     with mp.Pool() as pool:
         pool.starmap(model_test_worker, tasks)

@@ -19,3 +19,7 @@ class EmptyReturnsError(ReturnsError):
 
 class NoModelOutputsError(ReturnsError):
     """No matching summary/total_returns file pairs were found."""
+
+
+class NoMatchingRunError(ReturnsError):
+    """No backtest run in the output directory matches the requested model version."""

@@ -8,7 +8,9 @@ from typing import Any, Callable, Iterable
 import pytest
 
 from returns.config import AppConfig
+from returns.data import RunManifest, find_runs, write_run_manifest
 from returns.errors import EmptyReturnsError
+from returns.models import MODEL_VERSION
 from tests.conftest import load_bin_module
 
 runner = load_bin_module("runner")
@@ -99,12 +101,30 @@ def test_backtest_summarize_report_end_to_end(
         use_config(module)
         monkeypatch.setattr(module, "load_config", lambda: small)
 
-    runner.main()
     out_dir = small.datasets["synthetic"].out_dir
-    assert len(list(out_dir.glob("returns_*.csv"))) == 3 * 2
+    # leftovers that summarize must ignore: an unversioned run and an old-version run
+    for stamp in ("2025-01-01_0000", "2025-02-01_0000"):
+        (out_dir / f"returns_1_Buy_Hold_{stamp}.csv").write_text("garbage\n")
+    write_run_manifest(
+        out_dir,
+        RunManifest(
+            timestamp="2025-02-01_0000",
+            model_version=MODEL_VERSION - 1,
+            dataset="synthetic",
+            years=[1],
+            model_count=1,
+        ),
+    )
+
+    runner.main()
+    manifests = [m for m in find_runs(out_dir) if m.model_version == MODEL_VERSION]
+    assert len(manifests) == 1
+    assert manifests[0].years == [1, 2] and manifests[0].model_count == 3
+    assert len(list(out_dir.glob(f"returns_*_{manifests[0].timestamp}.csv"))) == 3 * 2
 
     summarize.main()
     assert len(list(out_dir.glob("summary_*.csv"))) == 3
+    assert not list(out_dir.glob("summary_*2025-*"))
     assert (tmp_path / "data" / "combined.csv").exists()
 
     generate_report.main()
@@ -112,6 +132,15 @@ def test_backtest_summarize_report_end_to_end(
     assert [m["family"] for m in report["models"]] == ["buy_hold", "kelly", "insurance"]
     assert [row["year"] for row in report["models"][0]["summary"]] == [1, 2]
     assert set(report["models"][0]["distributions"]) == {"1"}
+
+
+def test_summarize_exits_when_no_current_version_run(
+    use_config: Callable[..., None],
+) -> None:
+    use_config(summarize)
+    with pytest.raises(SystemExit) as exc:
+        summarize.main()
+    assert exc.value.code == 1
 
 
 def test_generate_report_main_exits_when_no_outputs(

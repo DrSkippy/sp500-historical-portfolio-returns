@@ -36,7 +36,10 @@ only `gh-pages` carries them.
 - **Golden master.** `tests/test_golden_master.py` runs the whole pipeline on synthetic data and
   compares against `tests/golden/pipeline_snapshot.json`. Refactors must not change it; for an
   intentional result change, regenerate with `UPDATE_GOLDEN=1 poetry run pytest
-  tests/test_golden_master.py` in the same commit and say why in the message.
+  tests/test_golden_master.py` in the same commit, **bump `MODEL_VERSION`** in
+  `returns/models.py`, and say why in the message. `summarize.py` only processes runs whose
+  `run_{timestamp}.json` manifest carries the current `MODEL_VERSION`, so old runs can't leak
+  into the report.
 - **Test edge cases explicitly.** Known sharp edges in this codebase:
   - `calculate_mode` (`analysis.py`): `np.histogram` returns bin *edges* (one more than the
     counts); bin `i` spans `edges[i]..edges[i+1]`. The mode is that bin's centre. (Before

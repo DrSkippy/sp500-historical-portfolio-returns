@@ -13,6 +13,11 @@ from returns.types import PriceBar, Trade, WindowReturn
 
 logger = logging.getLogger(__name__)
 
+# Bump whenever a change alters backtest results (and regenerate the golden snapshot in the
+# same commit). runner.py records it in each run's manifest; summarize.py only processes runs
+# from the current version. 1 = before 2026-10-07; 2 = mode fix + stock-insuring InsuranceModel.
+MODEL_VERSION = 2
+
 DAYS_PER_YEAR = 365
 STRIDE_DAYS = 3  # stride for data sampling
 PADDING_TIME_DELTA = datetime.timedelta(

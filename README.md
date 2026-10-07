@@ -90,7 +90,9 @@ poetry run python bin/runner.py
 ```
 
 Dispatches 225 tasks via `multiprocessing.Pool`, one per (years, model) combination.
-Each worker loads data independently and writes a CSV to `./out_data/`. Warnings go to
+Each worker loads data independently and writes a CSV to `./out_data/`. The run also writes a
+`run_{timestamp}.json` manifest recording the model version (`MODEL_VERSION` in
+`returns/models.py`) that produced it. Warnings go to
 `app1.log`; pass `--log-level INFO` (or `DEBUG`) for a per-trade trace, but expect a very large
 log (tens to hundreds of GB for a full run). Insurance variants check for losses every trading
 day and dominate the runtime: a full S&P 500 run takes about 18 minutes on 24 cores, QQQ about 5.
@@ -100,12 +102,13 @@ day and dominate the runtime: a full S&P 500 run takes about 18 minutes on 24 co
 Run after the backtest to aggregate results:
 
 ```bash
-poetry run python bin/summarize.py
+poetry run python bin/summarize.py [--run 2026-10-07_1550]
 ```
 
-Produces per-model summary CSVs and JSON files in `./out_data/`, and rewrites the dataset's
-`combined_path` CSV. It re-summarizes every run still in `out_data/`; delete old
-`returns_*` files first if you don't need them.
+Summarizes the newest run produced by the current model version — runs from older model
+versions, or without a manifest, are ignored — or the run named with `--run`. Produces
+per-model summary CSVs and JSON files in `./out_data/`, and rewrites the dataset's
+`combined_path` CSV.
 
 ### Generate the report data
 
@@ -319,6 +322,7 @@ sp500-historical-portfolio-returns/
 - Used as the bond/cash return proxy in Kelly and Insurance models
 
 **Output files** (written to the dataset's `out_dir`: `./out_data/` or `./out_data/qqq/`):
+- `run_{timestamp}.json` — run manifest: model version, dataset, holding periods (`runner.py`)
 - `returns_{years}_{model_name}_{timestamp}.csv` — per-start-date results (`runner.py`)
 - `summary_{model_name}_{timestamp}.csv` — aggregated stats (mean, median, stdev, mode, fraction losing) (`summarize.py`)
 - `total_returns_{model_name}_{timestamp}.json` — full return distribution for histogram plots (`summarize.py`)

@@ -10,18 +10,27 @@ Usage:
 """
 
 import argparse
+import datetime
 import json
-import os
-import sys
-from datetime import date, datetime
+import logging
 from typing import Any, Sequence
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import returns.data
-from returns.data import get_sp500_data, use_dataset
-from returns.db import get_db_settings, get_quotes
+import numpy as np
 
-OUTPUT_DIR = "trading_strategies_report/data"
+from returns.config import AppConfig, RecentPeriodConfig, load_config
+from returns.data import Dataset, Row, get_price_data, load_dataset
+from returns.db import get_db_settings, get_quotes
+from returns.logging_setup import configure_logging
+
+logger = logging.getLogger(__name__)
+
+DatedPrice = tuple[Any, float]
+PERCENTILES = (10, 25, 75, 90)
+
+
+def format_date(value: Any) -> str:
+    """Format a date/datetime as YYYY-MM-DD; other values with str()."""
+    return value.strftime("%Y-%m-%d") if hasattr(value, "strftime") else str(value)
 
 
 def compute_returns(prices: Sequence[float], window: int) -> list[float]:
@@ -33,34 +42,21 @@ def compute_returns(prices: Sequence[float], window: int) -> list[float]:
 
 
 def compute_stats(values: Sequence[float]) -> dict[str, float]:
-    """Compute mean, median, std, p10, p25, p75, p90."""
+    """Compute mean, median, population std, and the p10/p25/p75/p90 percentiles.
+
+    Percentiles interpolate linearly between ranks. Empty input gives ``{}``.
+    """
     if not values:
         return {}
-    n = len(values)
-    sorted_vals = sorted(values)
-    mean = sum(values) / n
-    median = (
-        sorted_vals[n // 2]
-        if n % 2
-        else (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
-    )
-    variance = sum((v - mean) ** 2 for v in values) / n
-    std = variance**0.5
-
-    def percentile(p: float) -> float:
-        idx = p / 100.0 * (n - 1)
-        lo, hi = int(idx), min(int(idx) + 1, n - 1)
-        return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (idx - lo)
-
-    return {
-        "mean": mean,
-        "median": median,
-        "std": std,
-        "p10": percentile(10),
-        "p25": percentile(25),
-        "p75": percentile(75),
-        "p90": percentile(90),
+    array = np.asarray(values, dtype=float)
+    stats = {
+        "mean": float(np.mean(array)),
+        "median": float(np.median(array)),
+        "std": float(np.std(array)),
     }
+    for p, value in zip(PERCENTILES, np.percentile(array, PERCENTILES)):
+        stats[f"p{p}"] = float(value)
+    return stats
 
 
 def percentile_rank(hist_values: Sequence[float], recent_value: float) -> float:
@@ -70,42 +66,44 @@ def percentile_rank(hist_values: Sequence[float], recent_value: float) -> float:
 
 
 def build_recent_entries(
-    dated_prices: Sequence[tuple[Any, float]],
+    dated_prices: Sequence[DatedPrice],
     window: int,
     n_recent: int,
     hist_values: Sequence[float],
 ) -> list[dict[str, Any]]:
     """
     Compute non-overlapping recent returns from the tail of dated_prices.
-    dated_prices: list of (date, price), sorted ascending
-    window: lookback in trading days
-    n_recent: number of non-overlapping periods to return
-    hist_values: historical distribution for percentile ranking
+
+    Args:
+        dated_prices: list of (date, price), sorted ascending
+        window: lookback in trading days
+        n_recent: number of non-overlapping periods to return
+        hist_values: historical distribution for percentile ranking
+
+    Returns:
+        ``{"date", "value", "percentile"}`` dicts, oldest first.
     """
     if len(dated_prices) < window + 1:
         return []
 
     # Take non-overlapping periods from the end: every `window`-th point
-    entries: list[dict[str, Any]] = []
     prices = [p for _, p in dated_prices]
     dates = [d for d, _ in dated_prices]
-    n = len(prices)
 
     # Build indices: start from the last valid point, step back by window
     indices: list[int] = []
-    i = n - 1
+    i = len(prices) - 1
     while i >= window and len(indices) < n_recent:
         indices.append(i)
         i -= window
     indices.reverse()
 
+    entries = []
     for idx in indices:
         ret = (prices[idx] - prices[idx - window]) / prices[idx - window]
-        d = dates[idx]
-        date_str = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
         entries.append(
             {
-                "date": date_str,
+                "date": format_date(dates[idx]),
                 "value": ret,
                 "percentile": percentile_rank(hist_values, ret),
             }
@@ -113,7 +111,68 @@ def build_recent_entries(
     return entries
 
 
+def load_recent_quotes(
+    dataset: Dataset, history: list[Row], config: AppConfig
+) -> list[DatedPrice]:
+    """Recent (date, close) quotes from PostgreSQL or the price history itself."""
+    symbol = dataset.config.recent_symbol
+    if dataset.config.recent_source == "db":
+        db = get_db_settings()
+        logger.info(
+            f"Connecting to PostgreSQL at {db['host']}:{db['port']}/{db['dbname']}..."
+        )
+        return list(get_quotes(symbol, config.sources.db_namespace))
+    return [(row[0].date(), row[dataset.price_index]) for row in history]
+
+
+def build_period_section(
+    period: RecentPeriodConfig,
+    hist_prices: Sequence[float],
+    recent_quotes: Sequence[DatedPrice],
+) -> dict[str, Any]:
+    """Historical distribution, its stats, and recent entries for one horizon."""
+    values = compute_returns(hist_prices, period.window)
+    return {
+        "values": values,
+        "stats": compute_stats(values),
+        "recent": build_recent_entries(
+            recent_quotes, period.window, period.recent, values
+        ),
+    }
+
+
+def build_output(dataset: Dataset, config: AppConfig) -> dict[str, Any]:
+    """Assemble the full recent-returns JSON structure for a dataset."""
+    # ── 1. Historical data ──────────────────────────────────────────────────
+    logger.info(f"Loading {dataset.config.price_path}...")
+    history, _ = get_price_data(dataset.config.price_path)
+    hist_prices = [row[dataset.price_index] for row in history]
+    logger.info(f"  {len(hist_prices)} historical prices loaded")
+
+    # ── 2. Recent quotes ────────────────────────────────────────────────────
+    recent_quotes = load_recent_quotes(dataset, history, config)
+    latest = recent_quotes[-1] if recent_quotes else None
+    logger.info(
+        f"  {len(recent_quotes)} {dataset.config.recent_symbol} rows loaded"
+        f" (latest: {latest[0] if latest else 'none'})"
+    )
+
+    # ── 3. Assemble output ──────────────────────────────────────────────────
+    output: dict[str, Any] = {
+        "generated_at": datetime.date.today().isoformat(),
+        "label": dataset.config.label,
+        "symbol": dataset.config.recent_symbol,
+        "history_start": history[0][0].year,
+        "latest_spy_date": format_date(latest[0]) if latest and latest[0] else "",
+        "latest_spy_close": latest[1] if latest else None,
+    }
+    for period in config.recent_returns.periods:
+        output[period.name] = build_period_section(period, hist_prices, recent_quotes)
+    return output
+
+
 def main() -> None:
+    """Build and write the recent-returns JSON for one dataset."""
     parser = argparse.ArgumentParser(
         description="Build recent returns data for the report site."
     )
@@ -121,94 +180,23 @@ def main() -> None:
         "--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)"
     )
     args = parser.parse_args()
-    cfg = use_dataset(args.dataset)
-    symbol = cfg["recent_symbol"]
-    output_path = os.path.join(OUTPUT_DIR, cfg["recent_data"])
+    configure_logging("INFO", ["console"])
+    config = load_config()
+    dataset = load_dataset(args.dataset, config)
 
-    # ── 1. Historical data ──────────────────────────────────────────────────
-    print(f"Loading {returns.data.sp500_input_path}...")
-    sp500_data, _ = get_sp500_data()
-    # price column from config (0=date, 1=open, 2=high, 3=low, 4=close, 5=adj_close, 6=volume)
-    hist_prices = [row[returns.data.sp500_index] for row in sp500_data]
-    print(f"  {len(hist_prices)} historical prices loaded")
+    output = build_output(dataset, config)
 
-    hist_daily = compute_returns(hist_prices, 1)
-    hist_weekly = compute_returns(hist_prices, 5)
-    hist_monthly = compute_returns(hist_prices, 21)
-    print(
-        f"  Historical: {len(hist_daily)} daily, {len(hist_weekly)} weekly, {len(hist_monthly)} monthly"
-    )
-
-    # ── 2. Recent quotes ────────────────────────────────────────────────────
-    if cfg["recent_source"] == "db":
-        db = get_db_settings()
-        print(
-            f"Connecting to PostgreSQL at {db['host']}:{db['port']}/{db['dbname']}..."
-        )
-        spy_rows: list[tuple[Any, float]] = list(get_quotes(symbol))
-    else:
-        spy_rows = [
-            (row[0].date(), row[returns.data.sp500_index]) for row in sp500_data
-        ]
-    print(
-        f"  {len(spy_rows)} {symbol} rows loaded (latest: {spy_rows[-1][0] if spy_rows else 'none'})"
-    )
-
-    latest_date = spy_rows[-1][0] if spy_rows else None
-    latest_close = spy_rows[-1][1] if spy_rows else None
-    latest_date_str = (
-        (
-            latest_date.strftime("%Y-%m-%d")
-            if hasattr(latest_date, "strftime")
-            else str(latest_date)
-        )
-        if latest_date
-        else ""
-    )
-
-    # ── 3. Recent returns ───────────────────────────────────────────────────
-    recent_daily = build_recent_entries(spy_rows, 1, 30, hist_daily)
-    recent_weekly = build_recent_entries(spy_rows, 5, 10, hist_weekly)
-    recent_monthly = build_recent_entries(spy_rows, 21, 4, hist_monthly)
-
-    # ── 4. Assemble output ──────────────────────────────────────────────────
-    output = {
-        "generated_at": date.today().isoformat(),
-        "label": cfg["label"],
-        "symbol": symbol,
-        "history_start": sp500_data[0][0].year,
-        "latest_spy_date": latest_date_str,
-        "latest_spy_close": latest_close,
-        "daily": {
-            "values": hist_daily,
-            "stats": compute_stats(hist_daily),
-            "recent": recent_daily,
-        },
-        "weekly": {
-            "values": hist_weekly,
-            "stats": compute_stats(hist_weekly),
-            "recent": recent_weekly,
-        },
-        "monthly": {
-            "values": hist_monthly,
-            "stats": compute_stats(hist_monthly),
-            "recent": recent_monthly,
-        },
-    }
-
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    with open(output_path, "w") as f:
+    output_dir = config.report.output_dir
+    output_path = output_dir / dataset.config.recent_data
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w") as f:
         json.dump(output, f, separators=(",", ":"))
-    print(f"Written: {output_path}")
-    print(
-        f"  daily values: {len(output['daily']['values'])}, recent: {len(output['daily']['recent'])}"
-    )
-    print(
-        f"  weekly values: {len(output['weekly']['values'])}, recent: {len(output['weekly']['recent'])}"
-    )
-    print(
-        f"  monthly values: {len(output['monthly']['values'])}, recent: {len(output['monthly']['recent'])}"
-    )
+    logger.info(f"Written: {output_path}")
+    for period in config.recent_returns.periods:
+        section = output[period.name]
+        logger.info(
+            f"  {period.name} values: {len(section['values'])}, recent: {len(section['recent'])}"
+        )
 
 
 if __name__ == "__main__":

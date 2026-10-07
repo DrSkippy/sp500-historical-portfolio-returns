@@ -19,6 +19,8 @@ switch in the header). See [Deploy the report site](#deploy-the-report-site).
 
 ### Grid search parameters
 
+Set under `models:` in `config.yaml` (with the stride, capital and year range under `backtest:`):
+
 - **Kelly**: `bond_frac` ∈ {0.10, 0.15, 0.20, 0.25} × `rebalance_period` ∈ {90, 180} days → 8 variants
 - **Insurance**: `insurance_frac` ∈ {0.05, 0.10} × `deductible` ∈ {0.09, 0.12, 0.18} → 6 variants
 - **Total**: 15 model variants × 15 holding periods = **225 parallel backtest tasks**
@@ -201,6 +203,10 @@ S&P 500 price-index methodology; set `price_column: "Adj Close**"` to include di
 sp500-historical-portfolio-returns/
 ├── returns/
 │   ├── models.py              # Model, KellyModel, InsuranceModel
+│   ├── types.py               # PriceBar, Trade, WindowReturn, ReturnStats records
+│   ├── config.py              # Pydantic schema + loader for config.yaml
+│   ├── errors.py              # Package exceptions
+│   ├── logging_setup.py       # Logging from logging.yaml
 │   ├── data.py                # Data loading and combination
 │   ├── analysis.py            # Aggregation and statistics
 │   ├── db.py                  # PostgreSQL access for recent quotes (PG* env vars)
@@ -214,6 +220,14 @@ sp500-historical-portfolio-returns/
 │   ├── transform_new_sp500_records.py  # Data ingestion helper
 │   └── download_qqq.py        # Download QQQ history to data/QQQ.tab
 ├── tests/
+│   ├── conftest.py            # load_bin_module, synthetic project fixture
+│   ├── golden/                # pipeline_snapshot.json for the golden-master test
+│   ├── test_golden_master.py  # end-to-end pipeline vs snapshot (refactors must not change it)
+│   ├── test_scripts.py        # bin/ entry points on a synthetic project
+│   ├── test_generate_report.py
+│   ├── test_generate_recent_returns.py
+│   ├── test_config.py
+│   ├── test_model_names.py
 │   ├── test_model_class.py
 │   ├── test_kelly_model_class.py
 │   ├── test_insurance_class.py
@@ -239,7 +253,8 @@ sp500-historical-portfolio-returns/
 ├── notebooks/                 # Exploratory Jupyter notebooks
 ├── .claude/agents/
 │   └── test-runner.md         # Claude Code subagent that runs the test suite
-├── config.yaml                # Dataset definitions
+├── config.yaml                # Datasets and all backtest/model/report calibration
+├── logging.yaml               # Logging configuration for bin/ scripts
 ├── .envrc.example             # PG* database variables template (copy to .envrc)
 └── pyproject.toml             # Dependencies plus black and mypy (strict) settings
 ```
@@ -280,7 +295,7 @@ it rebalances back to target, applying daily compounding interest to the cash/bo
 
 ### Insurance (`InsuranceModel`)
 
-Extends Kelly with a rolling 6-day price window. If the price drops more than
+Rebalances like Kelly and watches a rolling 6-day price window (`loss_window_days`). If the price drops more than
 `insurance_deductible` (tested values: 9%, 12%, 18%) over that window, an insurance payout fires:
 
 ```

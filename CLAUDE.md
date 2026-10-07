@@ -28,9 +28,15 @@ only `gh-pages` carries them.
 
 ### Testing principles
 
-- **No I/O in unit tests.** Use `tmp_path` + `monkeypatch` to redirect module-level file paths
-  (e.g. `monkeypatch.setattr(returns.data, "sp500_input_path", str(tmp_file))`).
+- **No I/O outside `tmp_path`.** Data functions take explicit paths or a `Dataset`; build a
+  config with `load_config(tmp_path / "config.yaml")` (or the `synthetic_config` fixture in
+  `tests/conftest.py`) rather than monkeypatching module state. Import `bin/` scripts with
+  `tests.conftest.load_bin_module`.
 - **Synthetic data only.** Build minimal fixture rows rather than loading real data files.
+- **Golden master.** `tests/test_golden_master.py` runs the whole pipeline on synthetic data and
+  compares against `tests/golden/pipeline_snapshot.json`. Refactors must not change it; for an
+  intentional result change, regenerate with `UPDATE_GOLDEN=1 poetry run pytest
+  tests/test_golden_master.py` in the same commit and say why in the message.
 - **Test edge cases explicitly.** Known sharp edges in this codebase:
   - `calculate_mode` (`analysis.py`): when `argmax == 0`, `bins[argmax - 1]` wraps to the
     last bin — test data must place the histogram peak away from bin 0.
@@ -48,18 +54,31 @@ only `gh-pages` carries them.
 - **Bisect for sorted data:** the daily price list is sorted by date. Use `bisect.bisect_left`
   to jump to the start of each test window instead of a linear scan with `continue`. Pre-compute
   `dates = [d[0] for d in data]` once outside the while loop.
-- When adding new strategies, add them to `all_model_specs()` in `runner.py` — the parallelism
-  scales automatically.
+- When adding new strategies, register the class in `MODEL_CLASSES` and add its variants to
+  `all_model_specs()` in `runner.py` (grid values come from `models:` in `config.yaml`) — the
+  parallelism scales automatically.
+
+### Configuration
+
+All calibration lives in `config.yaml`, validated by Pydantic models in `returns/config.py`
+(unknown keys are errors; relative paths resolve against the config file's directory):
+`datasets`, `backtest` (stride, capital, year range, histogram bins), `models` (Kelly and
+Insurance grids and insurance parameters), `recent_returns`, `report`, `monthly_returns`,
+`sources`. Logging is configured from `logging.yaml` via `returns.logging_setup`.
 
 ### Module layout
 
 ```
 returns/
-  models.py          # Model, KellyModel, InsuranceModel
-  data.py            # I/O: use_dataset, get_sp500_data, get_interest_data, get_combined_sp500_interest_data
+  models.py          # Model, RebalancingModel, KellyModel, InsuranceModel; model-name format/parse
+  types.py           # PriceBar, Trade, WindowReturn, ReturnStats (NamedTuples; CSV headers)
+  config.py          # Pydantic AppConfig + load_config (config.yaml)
+  errors.py          # ReturnsError and subclasses
+  data.py            # I/O: load_dataset -> Dataset, get_price_data, get_interest_data, get_combined_data, summaries
   db.py              # PostgreSQL access (get_db_settings, get_quotes); settings from .envrc PG* vars
   analysis.py        # aggregate_returns, calculate_mode, get_aggregate_returns_by_period
   monthly_returns.py # MonthlyReturns (30-day rolling returns, formula: (cur-prior)/cur)
+  logging_setup.py   # configure_logging from logging.yaml
 bin/
   runner.py                  # Backtest entry point; model_tester, model_test_worker, all_model_specs
   summarize.py               # Aggregate backtest CSVs into summary_*.csv / total_returns_*.json
@@ -71,7 +90,8 @@ bin/
 data/                # SP500.tab, QQQ.tab, interest.tab (tab-separated)
 out_data/            # Backtest output (out_data/qqq/ for QQQ); gitignored
 trading_strategies_report/   # Static report site, deployed via gh-pages
-config.yaml          # Dataset definitions (paths, price column, report/recent-data files)
+config.yaml          # Datasets plus all backtest/model/report calibration (see Configuration)
+logging.yaml         # Logging formatters/handlers for bin/ scripts
 ```
 
 ---

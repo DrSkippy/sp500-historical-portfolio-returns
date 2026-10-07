@@ -16,14 +16,13 @@ DB_ENV_VARS = ("PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE")
 
 
 def get_db_settings() -> dict[str, Any]:
-    """
-    Read database connection settings from the environment.
+    """Read database connection settings from the environment.
 
     Returns:
-    dict: psycopg connection kwargs (host, port, user, password, dbname).
+        psycopg connection kwargs (host, port, user, password, dbname).
 
     Raises:
-    RuntimeError: if any required variable is unset; there are no defaults.
+        RuntimeError: If any required variable is unset; there are no defaults.
     """
     missing = [v for v in DB_ENV_VARS if not os.environ.get(v)]
     if missing:
@@ -50,16 +49,16 @@ def get_quotes(
     namespace: str = "NASDAQ",
     connect: Callable[[], psycopg.Connection[Any]] = get_connection,
 ) -> list[tuple[datetime.date, float]]:
-    """
-    Query closing prices for a symbol from the quotes table, sorted ascending by date.
+    """Query closing prices for a symbol from the quotes table, sorted ascending by date.
 
-    Parameters:
-    symbol (str): Ticker symbol, e.g. "SPY".
-    namespace (str): Quote namespace in the quotes table.
-    connect (callable): Connection factory (injectable for tests).
+    Args:
+        symbol: Ticker symbol, e.g. "SPY".
+        namespace: Quote namespace in the quotes table (``sources.db_namespace``
+            in config.yaml).
+        connect: Connection factory (injectable for tests).
 
     Returns:
-    list: (date, close) tuples with close as float.
+        (date, close) tuples with close as float.
     """
     with connect() as conn, conn.cursor() as cur:
         cur.execute(

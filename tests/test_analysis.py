@@ -7,8 +7,15 @@ import pytest
 from returns.analysis import (
     aggregate_returns,
     calculate_mode,
+    format_metrics,
     get_aggregate_returns_by_period,
+    get_df_aggregate_returns_by_period,
+    plot_df,
+    plot_histograms,
+    plot_period_comparison_data,
 )
+from returns.errors import EmptyReturnsError
+from returns.types import SUMMARY_COLUMNS
 
 
 class TestCalculateMode:
@@ -75,3 +82,39 @@ class TestGetAggregateReturnsByPeriod:
         stats, totals = get_aggregate_returns_by_period(data)
         assert len(stats) == 2
         assert len(totals) == 2
+
+
+def _rows(values: list[float], years: float = 1.0) -> list[list[Any]]:
+    return [
+        [datetime.datetime(2020, 1, i + 1), v, v / years, years, "Model"]
+        for i, v in enumerate(values)
+    ]
+
+
+def test_aggregate_returns_empty_raises() -> None:
+    with pytest.raises(EmptyReturnsError):
+        aggregate_returns([])
+
+
+def test_format_metrics_lists_every_statistic() -> None:
+    stats, _ = aggregate_returns(_rows([0.10, -0.05, 0.20, -0.10, 0.15]))
+    text = format_metrics(stats)
+    assert text.splitlines()[0] == "### AGGREGATE RETURNS ### Model ###"
+    assert "Mean Returns             = 6.00%" in text
+    assert "Losing start days        = 40.00%" in text
+    assert len(text.splitlines()) == 12
+
+
+def test_summary_table_and_plots_render(monkeypatch: pytest.MonkeyPatch) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    stats, totals = get_aggregate_returns_by_period(
+        {2: _rows([0.2, 0.1, 0.3], 2.0), 1: _rows([0.1, -0.05, 0.2])}
+    )
+    df = get_df_aggregate_returns_by_period(stats)
+    assert list(df.columns) == SUMMARY_COLUMNS
+    assert df["time_span"].tolist() == [1.0, 2.0]
+    plot_df(df, df2=df)
+    plot_histograms(totals)
+    plot_period_comparison_data(df)

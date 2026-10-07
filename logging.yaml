@@ -1,0 +1,25 @@
+# Logging configuration for bin/ scripts (loaded by returns.logging_setup.configure_logging).
+# Scripts choose which handlers the root logger uses and may override the level.
+version: 1
+disable_existing_loggers: false
+formatters:
+  simple:
+    format: "%(asctime)s %(levelname)s %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  detailed:
+    format: "%(process)d|%(asctime)s|%(levelname)s|%(funcName)20s()|%(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: simple
+    stream: ext://sys.stdout
+  file:
+    class: logging.FileHandler
+    formatter: detailed
+    filename: app1.log
+    mode: w
+    delay: true
+root:
+  level: INFO
+  handlers: [console]

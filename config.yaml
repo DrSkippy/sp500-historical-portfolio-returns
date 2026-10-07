@@ -25,3 +25,45 @@ datasets:
     recent_source: file
     recent_symbol: QQQ
     recent_data: recent_returns_data_qqq.json
+
+# Backtest sampling (bin/runner.py, bin/summarize.py)
+backtest:
+  stride_days: 3          # days between successive window start dates
+  padding_strides: 2      # skip-ahead padding before scheduled trades, in strides
+  initial_capital: 10000
+  min_years: 1            # window lengths backtested: min_years..max_years inclusive
+  max_years: 15
+  histogram_bins: 45      # bins for the mode estimates in summaries
+
+# Model grid for the full backtest run (bin/runner.py)
+models:
+  kelly:                  # cross product of bond_fracs x rebalance_days
+    bond_fracs: [0.1, 0.2, 0.25, 0.15]
+    rebalance_days: [90, 180]
+  insurance:              # cross product of fracs x deductibles
+    fracs: [0.05, 0.1]
+    deductibles: [0.09, 0.12, 0.18]
+    period_days: 90       # policy / scheduled rebalance period
+    rate: -0.005          # insurance rate
+    payout_factor: 10     # payout = loss fraction x payout_factor x insurance cash
+    loss_window_days: 6   # trading days over which the loss is measured
+
+# Return horizons for bin/generate_recent_returns.py (window in trading days)
+recent_returns:
+  periods:
+    - {name: daily, window: 1, recent: 30}
+    - {name: weekly, window: 5, recent: 10}
+    - {name: monthly, window: 21, recent: 4}
+
+report:
+  output_dir: ./trading_strategies_report/data
+  dist_years: [1, 5, 10, 15]   # window lengths whose full distributions go in report JSON
+
+monthly_returns:               # bin/get_monthly_returns.py
+  offset_days: 30
+  histogram_bins: 60
+  output_path: ./out_data/monthly_returns.csv
+
+sources:
+  interest_path: ./data/interest.tab
+  db_namespace: NASDAQ         # quotes table namespace for recent_source: db

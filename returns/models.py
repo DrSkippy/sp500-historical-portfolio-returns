@@ -1,69 +1,157 @@
+"""Portfolio strategies: Buy & Hold, Fractional Kelly, and Insurance.
+
+Each model is configured for one backtest window with ``model_config`` and then
+fed one ``PriceBar`` per trading day through ``trade``.
+"""
+
 import datetime
 import logging
 import math
-from typing import Sequence
+from typing import Any
+
+from returns.types import PriceBar, Trade, WindowReturn
 
 logger = logging.getLogger(__name__)
 
+DAYS_PER_YEAR = 365
 STRIDE_DAYS = 3  # stride for data sampling
 PADDING_TIME_DELTA = datetime.timedelta(
     days=2 * STRIDE_DAYS
 )  # days to pad the jumps in the data
 
-# (stock price, annual interest rate) for one trading day
-Price = Sequence[float]
-# (date, price, delta_shares, capital, shares)
-Trade = tuple[datetime.datetime, Price, float, float, float]
-# (start_date, frac_returns, yearly_return_rate, time_span_years, model_name)
-Returns = tuple[datetime.datetime, float, float, float, str]
+BUY_HOLD_NAME = "Buy_Hold"
+KELLY_PREFIX = "Fractional_Kelly"
+INSURANCE_PREFIX = "Insurance"
+
+
+def years_to_timedelta(years: float) -> datetime.timedelta:
+    """Convert a span in years to a timedelta using a 365-day year."""
+    return datetime.timedelta(days=DAYS_PER_YEAR * years)
+
+
+def days_to_years(days: int) -> float:
+    """Convert a span in days to years using a 365-day year."""
+    return days / DAYS_PER_YEAR
 
 
 class Model:
-    model_name = "Buy_Hold"
+    """Buy & Hold: buy with all capital on the first day, sell on the last.
 
-    def __init__(self, capital: float = 10000) -> None:
+    Attributes:
+        model_name: Name written to output files; encodes the parameters for
+            subclasses (see ``parse_model_name``).
+        stock_frac: Fraction of total capital held in stock.
+    """
+
+    model_name = BUY_HOLD_NAME
+    stock_frac = 1.0
+
+    def __init__(
+        self,
+        capital: float = 10000,
+        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
+    ) -> None:
+        """Create an unconfigured model.
+
+        Args:
+            capital: Starting cash for every window.
+            skip_padding: How far before a scheduled trade date to resume daily
+                processing when skipping ahead (must cover data gaps).
+        """
         self.init_capital = capital
-        logger.info("Model initialized, but not configured")
-
-    def model_config(self, start_date: datetime.datetime, years: int = 1) -> None:
-        self.capital = self.init_capital
+        self.skip_padding = skip_padding
+        self.capital = capital
         self.shares: float = 0
         self.trades: list[Trade] = []
+        self.start_date = datetime.datetime.min
+        self.end_date = datetime.datetime.min
+        self.first_trigger = True
+        self.last_trigger = True
+        logger.info("Model initialized, but not configured")
+
+    def _build_model_name(self) -> str:
+        """Return the name for this model's parameters (constant for Buy & Hold)."""
+        return BUY_HOLD_NAME
+
+    def model_config(self, start_date: datetime.datetime, years: int = 1) -> None:
+        """Reset all state for a new backtest window.
+
+        Args:
+            start_date: First day of the window.
+            years: Window length in years.
+        """
+        # assign, never append: model_config runs thousands of times per model
+        self.model_name = self._build_model_name()
+        self.capital = self.init_capital
+        self.shares = 0
+        self.trades = []
         #
         self.start_date = start_date
-        self.end_date = start_date + datetime.timedelta(days=365 * years)
+        self.end_date = start_date + years_to_timedelta(years)
         logger.info(f"Model configured with starting capital = {self.capital}")
         logger.info(f"Model configured start date = {start_date}")
         logger.info(f"Model configured for {years} years")
         #
         self.first_trigger = True
         self.last_trigger = True
+        self._configure()
 
-    def first_trade(self, date: datetime.datetime, price: Price) -> None:
-        # buy all shares
-        self.shares = self.capital / price[0]
-        self.capital -= self.shares * price[0]
-        self.trades.append((date, price, self.shares, self.capital, self.shares))
+    def _configure(self) -> None:
+        """Hook for subclasses to reset their own per-window state."""
 
-    def last_trade(self, date: datetime.datetime, price: Price) -> None:
-        # sell all shares
-        self.capital += self.shares * price[0]
+    def _record_trade(
+        self, date: datetime.datetime, bar: PriceBar, delta: float
+    ) -> None:
+        """Append a trade with the current capital and share count."""
+        self.trades.append(Trade(date, bar, delta, self.capital, self.shares))
+
+    def first_trade(self, date: datetime.datetime, price: PriceBar) -> None:
+        """Buy stock with ``stock_frac`` of capital on the first day of the window."""
+        # start by buying stocks
+        self.shares = self.stock_frac * self.capital / price.price
+        # reduce cash capital by the stock purchase
+        self.capital -= self.shares * price.price
+        self._record_trade(date, price, self.shares)
+
+    def last_trade(self, date: datetime.datetime, price: PriceBar) -> None:
+        """Sell all shares at the end of the window."""
+        self.capital += self.shares * price.price
         delta_shares = -self.shares
         self.shares = 0
-        self.trades.append((date, price, delta_shares, self.capital, self.shares))
+        self._record_trade(date, price, delta_shares)
 
     def daily_trade(
-        self, date: datetime.datetime, price: Price
+        self, date: datetime.datetime, price: PriceBar
     ) -> datetime.datetime | None:
-        # hold all shares until the end
-        # Send a skip ahead date since no trading will occur until the end
-        test_skip_date = self.end_date - PADDING_TIME_DELTA
-        if date >= test_skip_date:
-            return None
-        else:
-            return test_skip_date
+        """Handle a day inside the window (not the first or last trade).
 
-    def trade(self, date: datetime.datetime, price: Price) -> datetime.datetime | None:
+        Buy & Hold never trades mid-window, so it asks to skip to just before the
+        window ends.
+
+        Returns:
+            Date to skip ahead to, or None to keep processing every day.
+        """
+        return self._skip_to(self.end_date - self.skip_padding, date)
+
+    @staticmethod
+    def _skip_to(
+        target: datetime.datetime, date: datetime.datetime
+    ) -> datetime.datetime | None:
+        """Return ``target`` if it is still ahead of ``date``, else None."""
+        return None if date >= target else target
+
+    def trade(
+        self, date: datetime.datetime, price: PriceBar
+    ) -> datetime.datetime | None:
+        """Process one trading day.
+
+        Args:
+            date: Trading day.
+            price: Price and interest rate for the day.
+
+        Returns:
+            Date the caller may skip ahead to, or None to deliver the next day.
+        """
         skip_to_date = None
         if self.start_date <= date < self.end_date:
             # inside the trading window
@@ -88,29 +176,29 @@ class Model:
         return skip_to_date
 
     def status(self) -> list[str]:
+        """Return a summary line followed by one line per trade."""
         status_str = (
             f"#### STATUS: Initial Capital={self.init_capital:10.2f} "
             f"Capital={self.capital:10.2f} Shares={self.shares:10.2f} "
             f"Trades={len(self.trades)}"
         )
-        status_str_list = [status_str]
-        for x in self.trades:
-            status_str_list.append(
-                f"{x[0]},({x[1][0]:10.2f},{x[1][1]:10.2f})"
-                f",{x[2]:10.2f},{x[3]:10.2f},{x[4]:10.2f}"
-            )
-        return status_str_list
+        return [status_str] + [
+            f"{t.date},({t.bar.price:10.2f},{t.bar.interest_rate:10.2f})"
+            f",{t.delta_shares:10.2f},{t.capital:10.2f},{t.shares:10.2f}"
+            for t in self.trades
+        ]
 
-    def yearly_returns(self, final_frac_capital: float, period_years: float) -> float:
-        """
-        Estimate the yearly compounding rate from total returns.
+    @staticmethod
+    def yearly_returns(final_frac_capital: float, period_years: float) -> float:
+        """Estimate the yearly compounding rate from total returns.
 
-        Parameters:
-        final_frac_capital (float): The final fraction of the initial capital after the investment period.
-        period_years (float): The number of years over which the investment was held.
+        Args:
+            final_frac_capital: The final fraction of the initial capital after the
+                investment period.
+            period_years: The number of years over which the investment was held.
 
         Returns:
-        float: The estimated yearly compounding rate.
+            The estimated yearly compounding rate, or 0 for invalid input.
         """
         # Check if there are no returns or the input is invalid
         if final_frac_capital <= 0.0 or period_years <= 0:
@@ -119,13 +207,20 @@ class Model:
         # Calculate and return the yearly compounding rate
         return math.exp(math.log(final_frac_capital) / period_years) - 1
 
-    def total_returns(self) -> Returns:
+    def total_returns(self) -> WindowReturn:
+        """Summarize the completed window.
+
+        Returns:
+            Total and annualized returns; zeros if fewer than two trades happened.
+        """
         # Ensure there are enough trades to calculate returns
         if len(self.trades) < 2 or self.init_capital <= 0:
-            return (self.start_date, 0, 0, 0, self.model_name)
+            return WindowReturn(self.start_date, 0, 0, 0, self.model_name)
 
         # Calculate time span in years
-        time_span_years = (self.trades[-1][0] - self.trades[0][0]).days / 365
+        time_span_years = days_to_years(
+            (self.trades[-1].date - self.trades[0].date).days
+        )
 
         # Calculate fractional returns
         frac_returns = (self.capital - self.init_capital) / self.init_capital
@@ -133,7 +228,7 @@ class Model:
         # Calculate yearly return rate
         yearly_return_rate = self.yearly_returns(1 + frac_returns, time_span_years)
 
-        return (
+        return WindowReturn(
             self.start_date,
             frac_returns,
             yearly_return_rate,
@@ -142,100 +237,128 @@ class Model:
         )
 
 
-class KellyModel(Model):
-    model_name = "Fractional_Kelly"
+class RebalancingModel(Model):
+    """Holds ``stock_frac`` in stock and the rest in interest-bearing cash, and
+    rebalances back to that split periodically.
+    """
 
     def __init__(
         self,
         capital: float = 10000,
-        bond_fract: float = 0.4,
-        rebalance_period: int = 90,
+        stock_frac: float = 1.0,
+        rebalance_period_days: int = 90,
+        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
     ) -> None:
-        self.init_capital = capital
-        self.init_bond_frac = bond_fract
-        self.init_rebalance_period_days = rebalance_period
-        logger.info("Model initialized, but not configured")
+        """Create an unconfigured rebalancing model.
 
-    def model_config(self, start_date: datetime.datetime, years: int = 1) -> None:
-        self.model_name = f"Fractional_Kelly_{self.init_bond_frac:.2}_{self.init_rebalance_period_days}"
-        self.capital = self.init_capital
-        self.shares: float = 0
-        self.trades: list[Trade] = []
-        #
-        self.start_date = start_date
-        self.end_date = start_date + datetime.timedelta(days=365 * years)
-        logger.info(f"Model configured with starting capital = {self.capital}")
-        logger.info(f"Model configured start date = {start_date}")
-        logger.info(f"Model configured for {years} years")
-        #
-        self.first_trigger = True
-        self.last_trigger = True
-        #
-        self.bond_frac = self.init_bond_frac
-        self.stock_frac = 1.0 - self.bond_frac
-        self.rebalance_period = datetime.timedelta(days=self.init_rebalance_period_days)
+        Args:
+            capital: Starting cash for every window.
+            stock_frac: Target fraction of total capital held in stock.
+            rebalance_period_days: Days between scheduled rebalances.
+            skip_padding: See ``Model.__init__``.
+        """
+        super().__init__(capital, skip_padding)
+        self.stock_frac = stock_frac
+        self.rebalance_period = datetime.timedelta(days=rebalance_period_days)
         self.last_rebalance = self.start_date
-        logger.info(f"Model configured with bond fraction = {self.bond_frac}")
+
+    def _configure(self) -> None:
+        self.last_rebalance = self.start_date
         logger.info(
             f"Model configured with re-balance period = {self.rebalance_period}"
         )
 
-    def first_trade(self, date: datetime.datetime, price: Price) -> None:
-        self.shares = (
-            self.stock_frac * self.capital / price[0]
-        )  # start by buying stocks
-        self.capital -= (
-            self.shares * price[0]
-        )  # reduce cash capital by the stock purchase
-        self.trades.append((date, price, self.shares, self.capital, self.shares))
+    def _accrue_interest(self, date: datetime.datetime, rate: float) -> None:
+        """Compound cash at ``rate`` from the last rebalance to ``date``."""
+        # interest on capital, compound daily
+        self.capital *= (1.0 + rate) ** days_to_years((date - self.last_rebalance).days)
 
-    def last_trade(self, date: datetime.datetime, price: Price) -> None:
-        interest_factor = price[1]
+    def last_trade(self, date: datetime.datetime, price: PriceBar) -> None:
+        """Credit interest since the last rebalance, then sell all shares."""
         if (date - self.last_rebalance).days > 0:
-            # interest on capital, compound daily
-            self.capital *= (1.0 + interest_factor) ** (
-                (date - self.last_rebalance).days / 365
-            )
-        self.capital += self.shares * price[0]  # sell all stocks
-        delta_shares = -self.shares
-        self.shares = 0
-        self.trades.append((date, price, delta_shares, self.capital, self.shares))
+            self._accrue_interest(date, price.interest_rate)
+        super().last_trade(date, price)
+
+    def rebalance(
+        self, date: datetime.datetime, price: PriceBar, rate: float | None = None
+    ) -> None:
+        """Credit interest, then trade back to ``stock_frac`` of total capital.
+
+        Args:
+            date: Trading day.
+            price: Price for the day.
+            rate: Annual rate earned by cash since the last rebalance; defaults
+                to ``price.interest_rate``.
+        """
+        logger.info(f"Trading to re-balance on {date}")
+        self._accrue_interest(date, price.interest_rate if rate is None else rate)
+        # current stock value
+        stock_value = self.shares * price.price
+        # daily total capital
+        total_capital = self.capital + stock_value
+        delta_shares = (self.stock_frac * total_capital / price.price) - self.shares
+        self.capital -= delta_shares * price.price
+        self.shares += delta_shares
+        self._record_trade(date, price, delta_shares)
+
+
+class KellyModel(RebalancingModel):
+    """Fractional Kelly: fixed stock/bond split, rebalanced every period."""
+
+    model_name = KELLY_PREFIX
+
+    def __init__(
+        self,
+        capital: float = 10000,
+        bond_frac: float = 0.4,
+        rebalance_period: int = 90,
+        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
+    ) -> None:
+        """Create an unconfigured Kelly model.
+
+        Args:
+            capital: Starting cash for every window.
+            bond_frac: Fraction of capital held as interest-bearing cash.
+            rebalance_period: Days between rebalances.
+            skip_padding: See ``Model.__init__``.
+        """
+        super().__init__(capital, 1.0 - bond_frac, rebalance_period, skip_padding)
+        self.init_bond_frac = bond_frac
+        self.bond_frac = bond_frac
+        self.init_rebalance_period_days = rebalance_period
+
+    def _build_model_name(self) -> str:
+        return format_kelly_name(self.init_bond_frac, self.init_rebalance_period_days)
+
+    def _configure(self) -> None:
+        self.bond_frac = self.init_bond_frac
+        self.stock_frac = 1.0 - self.bond_frac
+        logger.info(f"Model configured with bond fraction = {self.bond_frac}")
+        super()._configure()
 
     def daily_trade(
-        self, date: datetime.datetime, price: Price
+        self, date: datetime.datetime, price: PriceBar
     ) -> datetime.datetime | None:
+        """Rebalance when the period has elapsed, then skip to the next one."""
         # Only trade if rebalance period has passed
         if date >= self.last_rebalance + self.rebalance_period:
             self.rebalance(date, price)
             self.last_rebalance = date
         # skip forward to next rebalance period
-        test_skip_date = min(
-            [
-                self.last_rebalance + self.rebalance_period - PADDING_TIME_DELTA,
-                self.end_date - PADDING_TIME_DELTA,
-            ]
-        )
-        if date >= test_skip_date:
-            return None
-        else:
-            return test_skip_date
-
-    def rebalance(self, date: datetime.datetime, price: Price) -> None:
-        # interest on capital, compound daily
-        logger.info(f"Trading to re-balance on {date}")
-        self.capital *= (1.0 + price[1]) ** ((date - self.last_rebalance).days / 365)
-        # current stock value
-        stock_value = self.shares * price[0]
-        # daily total capital
-        total_capital = self.capital + stock_value
-        delta_shares = (self.stock_frac * total_capital / price[0]) - self.shares
-        self.capital -= delta_shares * price[0]
-        self.shares += delta_shares
-        self.trades.append((date, price, delta_shares, self.capital, self.shares))
+        next_event = min(self.last_rebalance + self.rebalance_period, self.end_date)
+        return self._skip_to(next_event - self.skip_padding, date)
 
 
-class InsuranceModel(KellyModel):
-    model_name = "Insurance"
+class InsuranceModel(RebalancingModel):
+    """Stock plus a cash allocation that pays out on sharp short-term losses.
+
+    Cash accrues at ``-insurance_rate`` (see the sign note in ``daily_trade``).
+    When the price falls by at least ``insurance_deductible`` over
+    ``loss_window_days`` trading days, cash becomes
+    ``-cash * loss_frac * insurance_payout_factor`` and the portfolio rebalances.
+    """
+
+    model_name = INSURANCE_PREFIX
 
     def __init__(
         self,
@@ -245,85 +368,136 @@ class InsuranceModel(KellyModel):
         insurance_rate: float = -0.005,
         insurance_deductible: float = 0.15,
         insurance_payout_factor: float = 10,
+        loss_window_days: int = 6,
+        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
     ) -> None:
-        self.init_capital = capital
-        # Assume insurance covers the losses above a minimum size (deductible?)
-        self.init_insurance_frac = (
-            insurance_frac  # capital allocated to insurance strategy
-        )
-        self.init_insurance_period = insurance_period  # period of insurance rate
-        self.init_insurance_rate = insurance_rate  # insurance rate
-        self.init_insurance_deductible = (
-            insurance_deductible  # insurance covers losses over this large in period
-        )
-        self.init_insurance_payout_factor = (
-            insurance_payout_factor  # insurance covers losses x insurance_payout_factor
-        )
-        logger.info("Model initialized, but not configured")
+        """Create an unconfigured insurance model.
 
-    def model_config(self, start_date: datetime.datetime, years: int = 1) -> None:
-        self.model_name = f"Insurance_{self.init_insurance_frac:.2}_{self.init_insurance_deductible:.2}_{self.init_insurance_period}"
-        self.capital = self.init_capital
-        self.shares: float = 0
-        self.trades: list[Trade] = []
-        #
-        self.start_date = start_date
-        self.end_date = start_date + datetime.timedelta(days=365 * years)
-        logger.info(f"Model configured with starting capital = {self.capital}")
-        logger.info(f"Model configured start date = {start_date}")
-        logger.info(f"Model configured for {years} years")
-        #
-        self.first_trigger = True
-        self.last_trigger = True
-        #
+        Args:
+            capital: Starting cash for every window.
+            insurance_frac: Capital allocated to the insurance strategy.
+            insurance_period: Days between scheduled rebalances (policy period).
+            insurance_rate: Insurance rate.
+            insurance_deductible: Insurance covers losses over this large in the
+                loss window.
+            insurance_payout_factor: Insurance covers losses x this factor.
+            loss_window_days: Number of trading days over which losses are measured.
+            skip_padding: See ``Model.__init__``.
+        """
+        super().__init__(capital, 1 - insurance_frac, insurance_period, skip_padding)
+        # Assume insurance covers the losses above a minimum size (deductible?)
+        self.init_insurance_frac = insurance_frac
+        self.init_insurance_period = insurance_period
+        self.init_insurance_rate = insurance_rate
+        self.init_insurance_deductible = insurance_deductible
+        self.init_insurance_payout_factor = insurance_payout_factor
+        self.losses_days = loss_window_days
+        self.insurance_frac = insurance_frac
+        self.insurance_rate = insurance_rate
+        self.insurance_deductible = insurance_deductible
+        self.last_price: list[float] = []  # list of prices for losses days
+
+    def _build_model_name(self) -> str:
+        return format_insurance_name(
+            self.init_insurance_frac,
+            self.init_insurance_deductible,
+            self.init_insurance_period,
+        )
+
+    def _configure(self) -> None:
         self.insurance_frac = self.init_insurance_frac
         self.stock_frac = 1 - self.insurance_frac
         self.insurance_rate = self.init_insurance_rate
         self.insurance_deductible = self.init_insurance_deductible
-        self.rebalance_period = datetime.timedelta(days=self.init_insurance_period)
-        self.last_rebalance = self.start_date
-        self.last_price: list[float] = []  # list of prices for losses days
-        self.losses_days = 6  # number of days to calculate losses
+        self.last_price = []
         logger.info(f"Model configured with insurance fraction = {self.insurance_frac}")
         logger.info(f"Model configured with insurance rate = {self.insurance_rate}")
         logger.info(
             f"Model configured with insurance deductible = {self.insurance_deductible}"
         )
-        logger.info(
-            f"Model configured with re-balance period = {self.rebalance_period}"
-        )
+        super()._configure()
         logger.info(
             f"Model configured with insurance payout factor = {self.init_insurance_payout_factor}"
         )
 
-    def daily_trade(
-        self, date: datetime.datetime, price: Price
-    ) -> datetime.datetime | None:
-        payout = False
-        # Loss insurance triggered?
+    def _check_payout(self, date: datetime.datetime, price: PriceBar) -> bool:
+        """Track the loss window and pay out if the loss exceeds the deductible.
+
+        Returns:
+            True if insurance paid out today.
+        """
         if len(self.last_price) < self.losses_days:
             # Not enough history to judge loss for payoff
-            self.last_price.append(price[0])
-        else:
-            start_price = self.last_price.pop(0)
-            loss_frac = (price[0] - start_price) / start_price
-            if loss_frac <= -self.insurance_deductible:
-                payout = True
-                # insurance pays out
-                self.capital = (
-                    -self.capital * loss_frac * self.init_insurance_payout_factor
-                )
-                self.trades.append((date, price, 0, self.capital, self.shares))
-                self.last_price = [price[0]]  # starting over
-                logger.info(f"Insurance payout on {date} of {self.capital}")
-                logger.info(
-                    f"Triggered by loss of {loss_frac} based on {self.losses_days} days of history"
-                )
-            else:
-                self.last_price.append(price[0])
+            self.last_price.append(price.price)
+            return False
+        start_price = self.last_price.pop(0)
+        loss_frac = (price.price - start_price) / start_price
+        if loss_frac > -self.insurance_deductible:
+            self.last_price.append(price.price)
+            return False
+        # insurance pays out
+        self.capital = -self.capital * loss_frac * self.init_insurance_payout_factor
+        self._record_trade(date, price, 0)
+        self.last_price = [price.price]  # starting over
+        logger.info(f"Insurance payout on {date} of {self.capital}")
+        logger.info(
+            f"Triggered by loss of {loss_frac} based on {self.losses_days} days of history"
+        )
+        return True
 
+    def daily_trade(
+        self, date: datetime.datetime, price: PriceBar
+    ) -> datetime.datetime | None:
+        """Check for a payout, and rebalance after a payout or when the period ends.
+
+        Never skips ahead: losses must be checked every trading day.
+        """
+        # Loss insurance triggered?
+        payout = self._check_payout(date, price)
         if date >= self.last_rebalance + self.rebalance_period or payout:
-            _price = (price[0], -self.insurance_rate)
-            self.rebalance(date, _price)
+            # cash accrues at -insurance_rate rather than the market interest rate
+            self.rebalance(date, price, rate=-self.insurance_rate)
             self.last_rebalance = date
         return None
+
+
+def format_kelly_name(bond_frac: float, rebalance_days: int) -> str:
+    """Return the KellyModel name, e.g. ``Fractional_Kelly_0.2_90``."""
+    return f"{KELLY_PREFIX}_{bond_frac:.2}_{rebalance_days}"
+
+
+def format_insurance_name(frac: float, deductible: float, period_days: int) -> str:
+    """Return the InsuranceModel name, e.g. ``Insurance_0.1_0.15_90``."""
+    return f"{INSURANCE_PREFIX}_{frac:.2}_{deductible:.2}_{period_days}"
+
+
+def parse_model_name(name: str) -> tuple[str, dict[str, Any]]:
+    """Recover the model family and parameters from a model name.
+
+    The inverse of ``format_kelly_name`` / ``format_insurance_name``.
+
+    Args:
+        name: A model name as written to output files.
+
+    Returns:
+        ``(family, params)`` where family is "buy_hold", "kelly", "insurance",
+        or "unknown" (with empty params).
+    """
+    if name == BUY_HOLD_NAME:
+        return "buy_hold", {}
+    if name.startswith(f"{KELLY_PREFIX}_"):
+        # Fractional_Kelly_{bond_frac}_{rebalance}
+        parts = name.split("_")
+        return "kelly", {
+            "bond_frac": float(parts[2]),
+            "rebalance": int(parts[3]),
+        }
+    if name.startswith(f"{INSURANCE_PREFIX}_"):
+        # Insurance_{ins_frac}_{deductible}_{rebalance}
+        parts = name.split("_")
+        return "insurance", {
+            "ins_frac": float(parts[1]),
+            "deductible": float(parts[2]),
+            "rebalance": int(parts[3]),
+        }
+    return "unknown", {}

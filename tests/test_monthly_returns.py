@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from returns.monthly_returns import OFFSET, MonthlyReturns
@@ -32,3 +34,38 @@ class TestMonthlyReturns:
         mr = _make_monthly_returns()
         s = mr.sample()
         assert isinstance(s, float)
+
+
+def test_custom_price_column_and_offset() -> None:
+    header = ["Date", "Close*"]
+    rows = [[None, float(p)] for p in [100, 50, 100, 200]]
+    mr = MonthlyReturns(rows, header, price_column="Close*", offset=1)
+    assert mr.returns.tolist() == pytest.approx([-1.0, 0.5, 0.5])
+
+
+def test_sample_with_seeded_generator_is_reproducible() -> None:
+    import numpy as np
+
+    mr = _make_monthly_returns(60)
+    a = mr.sample(np.random.default_rng(1))
+    b = mr.sample(np.random.default_rng(1))
+    assert a == b and a in mr.returns.tolist()
+    assert mr.sample() in mr.returns.tolist()
+
+
+def test_summary_text() -> None:
+    text = _make_monthly_returns(60).summary()
+    assert text.splitlines()[0] == "Monthly Returns Summary:"
+    assert "Total Samples: 30" in text
+
+
+def test_write_and_plot(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    import matplotlib
+    from matplotlib import pyplot as plt
+
+    matplotlib.use("Agg")
+    monkeypatch.setattr(plt, "show", lambda: None)
+    mr = _make_monthly_returns(60)
+    mr.write_to_csv(str(tmp_path / "m.csv"))
+    assert len((tmp_path / "m.csv").read_text().splitlines()) == 31
+    mr.plot_returns()

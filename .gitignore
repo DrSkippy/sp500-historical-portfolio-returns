@@ -10,3 +10,8 @@ logs/
 out_data/
 trading_strategies_report/data/
 .envrc
+.pytest_cache/
+*.egg-info/
+dist/
+.venv/
+*.pyc

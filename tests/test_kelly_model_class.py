@@ -1,6 +1,7 @@
 import unittest
 import datetime
 
+from returns.types import PriceBar
 from returns.models import PADDING_TIME_DELTA, InsuranceModel, KellyModel
 
 
@@ -29,7 +30,7 @@ class TestKellyModel(unittest.TestCase):
         self.kelly_model.capital = 10000
         self.kelly_model.stock_frac = 0.6  # Assuming 60% stock fraction
         date = datetime.datetime(2020, 1, 1)
-        price = [100, 1]  # Example price and interest rate
+        price = PriceBar(100, 1)  # Example price and interest rate
         self.kelly_model.first_trade(date, price)
         self.assertEqual(self.kelly_model.shares, 60)
         self.assertEqual(self.kelly_model.capital, 4000)
@@ -39,7 +40,7 @@ class TestKellyModel(unittest.TestCase):
         self.kelly_model.capital = 4000
         self.kelly_model.last_rebalance = datetime.datetime(2020, 1, 1)
         date = datetime.datetime(2020, 12, 30)
-        price = [100, 0]  # Example price and interest rate
+        price = PriceBar(100, 0)  # Example price and interest rate
         self.kelly_model.last_trade(date, price)
         self.assertEqual(self.kelly_model.shares, 0)
         self.assertEqual(self.kelly_model.capital, 10000)
@@ -49,7 +50,7 @@ class TestKellyModel(unittest.TestCase):
         self.kelly_model.capital = 1000
         self.kelly_model.last_rebalance = datetime.datetime(2020, 1, 1)
         date = datetime.datetime(2020, 12, 31)
-        price = [100, 0.10]  # Example price and interest rate
+        price = PriceBar(100, 0.10)  # Example price and interest rate
         self.kelly_model.last_trade(date, price)
         self.assertEqual(self.kelly_model.shares, 0)
         self.assertAlmostEqual(self.kelly_model.capital, 7100)
@@ -59,7 +60,7 @@ class TestKellyModel(unittest.TestCase):
         self.kelly_model.capital = 10000
         self.kelly_model.last_rebalance = datetime.datetime(2020, 1, 1)
         date = datetime.datetime(2020, 4, 1)
-        price = [100, 0.10]
+        price = PriceBar(100, 0.10)
         self.kelly_model.rebalance(date, price)
         # 10241.13 is capital after interest, 241 buys 2 shares at most
         self.assertAlmostEqual(self.kelly_model.capital, 10096.187344628)
@@ -67,7 +68,9 @@ class TestKellyModel(unittest.TestCase):
 
     def test_daily_trade_no_rebalance(self) -> None:
         self.kelly_model.end_date = datetime.datetime(2022, 12, 31)
-        skip = self.kelly_model.daily_trade(datetime.datetime(2020, 1, 2), [100, 1])
+        skip = self.kelly_model.daily_trade(
+            datetime.datetime(2020, 1, 2), PriceBar(100, 1)
+        )
         self.assertEqual(self.kelly_model.last_rebalance, datetime.datetime(2020, 1, 1))
         self.assertEqual(
             skip,
@@ -81,7 +84,9 @@ class TestKellyModel(unittest.TestCase):
         self.kelly_model.capital = 10000
         self.kelly_model.last_rebalance = datetime.datetime(2020, 1, 1)
         self.kelly_model.end_date = datetime.datetime(2022, 12, 31)
-        skip = self.kelly_model.daily_trade(datetime.datetime(2020, 4, 1), [100, 0.1])
+        skip = self.kelly_model.daily_trade(
+            datetime.datetime(2020, 4, 1), PriceBar(100, 0.1)
+        )
         self.assertEqual(self.kelly_model.last_rebalance, datetime.datetime(2020, 4, 1))
         self.assertEqual(skip, datetime.datetime(2020, 6, 24))
         self.assertAlmostEqual(self.kelly_model.capital, 10096.187344628)

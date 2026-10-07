@@ -1,284 +1,339 @@
+"""File I/O for price, interest, backtest-output and summary data."""
+
 import csv
 import datetime
 import json
-import locale
 import logging
-import os
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable
 
 import pandas as pd
-import yaml
 
 from returns.analysis import (
+    HISTOGRAM_BINS,
     get_aggregate_returns_by_period,
     get_df_aggregate_returns_by_period,
 )
+from returns.config import AppConfig, DatasetConfig, load_config
+from returns.errors import MissingPriceColumnError
+from returns.types import SUMMARY_COLUMNS
 
 logger = logging.getLogger(__name__)
 
-locale.setlocale(locale.LC_ALL, "")
+PRICE_DATE_FORMAT = "%b %d, %Y"
+OUTPUT_DATE_FORMAT = "%Y-%m-%d"
+INTEREST_DATE_FORMAT = "%Y-%m-%d"
+PERCENT = 100.0
+INTEREST_RATE_COLUMN = 0
+"""Index of the rate used by the models among the interest file's value columns."""
 
-sp500_input_path = "./data/SP500.tab"
-interest_input_path = "./data/interest.tab"
-combined_output_path = "./data/combined_data.csv"
-out_data_path = "./out_data/"
-config_path = "./config.yaml"
-
-FMT_IN = "%b %d, %Y"
-FMT_out = "%Y-%m-%d"
-
-sp500_index = 5
-interest_index = 0
-combined_sp500_index = sp500_index
-combined_interest_index = 7 + interest_index
+Row = list[Any]
 
 
-def use_dataset(name: str) -> dict[str, Any]:
+@dataclass(frozen=True)
+class Dataset:
+    """A dataset from config.yaml plus the column layout of its files.
+
+    Combined rows are ``price_row + interest_values``: the date, the price file's
+    value columns, then the interest file's value columns.
     """
-    Point the module-level paths and price column at a dataset from config.yaml.
 
-    Parameters:
-    name (str): Key under `datasets` in config.yaml (e.g. "sp500", "qqq").
+    name: str
+    config: DatasetConfig
+    interest_path: Path
+    price_header: tuple[str, ...]
+
+    @property
+    def price_index(self) -> int:
+        """Column of the traded price in price-file (and combined) rows."""
+        try:
+            return self.price_header.index(self.config.price_column)
+        except ValueError:
+            raise MissingPriceColumnError(
+                f"Price column {self.config.price_column!r} not in "
+                f"{self.config.price_path} header {list(self.price_header)}"
+            ) from None
+
+    @property
+    def interest_index(self) -> int:
+        """Column of the interest rate in combined rows."""
+        return len(self.price_header) + INTEREST_RATE_COLUMN
+
+
+def read_header(path: Path) -> list[str]:
+    """Return the first row of a tab-separated file."""
+    with path.open() as infile:
+        return next(csv.reader(infile, delimiter="\t"))
+
+
+def load_dataset(name: str, config: AppConfig | None = None) -> Dataset:
+    """Resolve a dataset from config.yaml and read its price-file header.
+
+    Args:
+        name: Key under ``datasets`` in config.yaml (e.g. "sp500", "qqq").
+        config: Loaded configuration; read from the default config.yaml if None.
 
     Returns:
-    dict: The dataset's config entry.
+        The dataset.
+
+    Raises:
+        DatasetConfigError: If the dataset is unknown or config is invalid.
+        MissingPriceColumnError: If the price column is not in the file header.
     """
-    global sp500_input_path, combined_output_path, out_data_path, sp500_index, combined_sp500_index
-    with open(config_path, "r") as infile:
-        cfg: dict[str, Any] = yaml.safe_load(infile)["datasets"][name]
-    with open(cfg["price_path"], "r") as infile:
-        header = next(csv.reader(infile, delimiter="\t"))
-    sp500_input_path = cfg["price_path"]
-    combined_output_path = cfg["combined_path"]
-    out_data_path = cfg["out_dir"]
-    sp500_index = header.index(cfg["price_column"])
-    combined_sp500_index = sp500_index
-    logger.info(f"Using dataset {name}: {cfg}")
-    return cfg
+    config = config or load_config()
+    dataset_config = config.dataset(name)
+    dataset = Dataset(
+        name=name,
+        config=dataset_config,
+        interest_path=config.sources.interest_path,
+        price_header=tuple(read_header(dataset_config.price_path)),
+    )
+    dataset.price_index  # validate the price column eagerly
+    logger.info(f"Using dataset {name}: {dataset_config}")
+    return dataset
 
 
-def get_interest_data() -> tuple[dict[int, list[float]], list[str]]:
-    """
-    Reads interest data from a TSV file.
+def parse_number(text: str) -> float:
+    """Parse a number that may contain comma thousands separators ("6,790.09")."""
+    return float(text.replace(",", ""))
+
+
+def get_interest_data(path: Path) -> tuple[dict[int, list[float]], list[str]]:
+    """Read yearly interest rates from a TSV file of percentages.
+
+    Args:
+        path: Interest file (first column a date, then one column per series).
 
     Returns:
-    tuple: A tuple containing the interest data (as a dictionary with years as keys) and the header.
+        Rates as fractions keyed by year, and the header without the date column.
     """
     interest_data = {}
 
-    with open(interest_input_path, "r") as infile:
+    with path.open() as infile:
         reader = csv.reader(infile, delimiter="\t")
         header = next(reader)[1:]  # Reading the header
 
         for row in reader:
             if not row:
                 continue
-            year = datetime.datetime.strptime(row[0], "%Y-%m-%d").year
-            interest_data[year] = [float(x) / 100.0 for x in row[1:]]
+            year = datetime.datetime.strptime(row[0], INTEREST_DATE_FORMAT).year
+            interest_data[year] = [float(x) / PERCENT for x in row[1:]]
 
-    # Debugging information
-    logger.info(f"Reading interest data")
-    logger.info(f"Path = {interest_input_path}")
+    logger.info("Reading interest data")
+    logger.info(f"Path = {path}")
     logger.info(f"Read {len(interest_data)} rows")
     logger.info(f"Fields = {header}")
 
     return interest_data, header
 
 
-def get_sp500_data() -> tuple[list[list[Any]], list[str]]:
-    """
-    Reads S&P 500 data from a TSV file.
+def get_price_data(path: Path) -> tuple[list[Row], list[str]]:
+    """Read daily prices from a TSV file.
+
+    Args:
+        path: Price file ("Mon DD, YYYY" dates, any row order).
 
     Returns:
-    tuple: A tuple containing the sorted data (with dates and values) and the header.
+        Rows of ``[date, value, ...]`` sorted by date, and the header.
     """
-    parsed_data: list[list[Any]] = []
+    parsed_data: list[Row] = []
 
-    with open(sp500_input_path, "r") as infile:
+    with path.open() as infile:
         reader = csv.reader(infile, delimiter="\t")
         header = next(reader)  # Reading the header
 
         for row in reader:
             # Parse date and data values
-            date = datetime.datetime.strptime(row[0], FMT_IN)
-            row_data = [locale.atof(x) for x in row[1:]]
-            parsed_data.append([date] + row_data)
+            date = datetime.datetime.strptime(row[0], PRICE_DATE_FORMAT)
+            parsed_data.append([date] + [parse_number(x) for x in row[1:]])
 
     # Sort data by date
     parsed_data.sort()
 
-    # Debugging information
-    logger.info(f"Reading S&P 500 data")
-    logger.info(f"Path = {sp500_input_path}")
+    logger.info("Reading price data")
+    logger.info(f"Path = {path}")
     logger.info(f"Read {len(parsed_data)} rows")
     logger.info(f"Fields = {header}")
 
     return parsed_data, header
 
 
-def get_combined_sp500_interest_data() -> tuple[list[list[Any]], list[str]]:
-    """
-    Reads S&P 500 and interest data from TSV files.
+def get_combined_data(dataset: Dataset) -> tuple[list[Row], list[str]]:
+    """Join each price row with the interest rates for its year.
+
+    Years after the last interest row use the last available rates.
+
+    Args:
+        dataset: Dataset to read.
 
     Returns:
-    tuple: A tuple containing the combined data (with dates and values) and
-    the header.
+        Combined rows sorted by date, and the combined header.
     """
-    result = []
-    logger.info(f"Combining S&P 500 and Interest data")
-    sp500, sp500_header = get_sp500_data()
-    interest, interest_header = get_interest_data()
+    logger.info("Combining price and interest data")
+    prices, price_header = get_price_data(dataset.config.price_path)
+    interest, interest_header = get_interest_data(dataset.interest_path)
     max_interest_year = max(interest.keys())
-    # Append rows from interest data to S&P 500 data
-    for i, row in enumerate(sp500):
-        year = min(row[0].year, max_interest_year)
-        result.append(row + interest[year])
-    return result, sp500_header + interest_header
+    combined = [row + interest[min(row[0].year, max_interest_year)] for row in prices]
+    return combined, price_header + interest_header
 
 
-def create_combined_data_file() -> None:
-    """
-    Creates a combined CSV file with data from all model runs.
-    """
-    data, header = get_combined_sp500_interest_data()
-    with open(combined_output_path, "w") as outfile:
+def create_combined_data_file(dataset: Dataset) -> None:
+    """Write the combined price + interest data to the dataset's combined_path."""
+    data, header = get_combined_data(dataset)
+    with dataset.config.combined_path.open("w") as outfile:
         writer = csv.writer(outfile)
         writer.writerow(header)
-        for row in data:
-            writer.writerow(row)
+        writer.writerows(data)
+
+
+def returns_file_path(out_dir: Path, years: int, suffix: str) -> Path:
+    """Path of a backtest output file: ``returns_{years}_{model}_{timestamp}.csv``."""
+    return out_dir / f"returns_{years}_{suffix}"
+
+
+def returns_file_suffix(path: Path) -> str:
+    """The ``{model}_{timestamp}.csv`` part of a returns file name."""
+    return "_".join(path.name.split("_")[2:])
+
+
+def total_returns_path(summary_path: Path) -> Path:
+    """Path of the total-returns JSON that accompanies a summary CSV."""
+    return summary_path.with_name(
+        summary_path.name.replace("summary", "total_returns").replace(".csv", ".json")
+    )
 
 
 def get_model_run_outputs(
-    suffix: str, years: Iterable[int] = (1, 2, 3)
-) -> tuple[dict[int, list[list[Any]]], list[str] | None, str]:
-    """
-    Reads data from CSV files for specified years and returns the data along with headers.
+    out_dir: Path, suffix: str, years: Iterable[int] = (1, 2, 3)
+) -> tuple[dict[int, list[Row]], list[str] | None, Path]:
+    """Read one model run's returns files for each window length.
 
-    Parameters:
-    suffix (str): Suffix for the filename.
-    years (list): List of years for which to read the data.
+    Args:
+        out_dir: Directory holding the returns files.
+        suffix: ``{model}_{timestamp}.csv`` identifying the run.
+        years: Window lengths to read.
 
     Returns:
-    tuple: A dictionary containing data for each year and the header of the CSV files.
+        Rows keyed by window length (sorted by date), the CSV header, and the
+        summary file path to write.
     """
-    results: dict[int, list[list[Any]]] = {}
+    results: dict[int, list[Row]] = {}
     header: list[str] | None = None
 
-    logger.info(f"Reading model run data")
+    logger.info("Reading model run data")
     for year in years:
-        filename = f"{out_data_path}returns_{year}_{suffix}"
+        filename = returns_file_path(out_dir, year, suffix)
         logger.info(f"Reading {filename}")
 
-        with open(filename, "r") as infile:
+        with filename.open() as infile:
             reader = csv.reader(infile)
             header = next(reader)  # Reading the header
-
-            # Process each row
-            data: list[list[Any]] = []
-            for row in reader:
-                date = datetime.datetime.strptime(row[0][:10], FMT_out)
-                data.append([date] + row[1:])
+            data = [
+                [datetime.datetime.strptime(row[0][:10], OUTPUT_DATE_FORMAT)] + row[1:]
+                for row in reader
+            ]
 
         results[year] = sorted(data)
         logger.info(f"Read {len(data)} rows")
         logger.info(f"Fields = {header}")
 
-    return results, header, f"{out_data_path}summary_{suffix}"
+    return results, header, out_dir / f"summary_{suffix}"
 
 
 def create_summary_file(
-    results: dict[int, list[list[Any]]], header: list[str] | None, filename: str
-) -> tuple[str, str]:
-    """
-    Creates a summary of the results and writes it to a CSV file.
+    results: dict[int, list[Row]],
+    header: list[str] | None,
+    filename: Path,
+    bins: int = HISTOGRAM_BINS,
+) -> tuple[Path, Path]:
+    """Write a model run's summary CSV and total-returns JSON.
 
-    Parameters:
-    results (dict): A dictionary containing the results for each year.
-    header (list): A list of headers for the CSV file.
-    filename (str): The name of the CSV file to write.
+    Args:
+        results: Returns rows keyed by window length.
+        header: Header of the returns files (unused; kept for the call signature
+            produced by ``get_model_run_outputs``).
+        filename: Summary CSV to write; the JSON goes alongside it.
+        bins: Histogram bins for the mode estimates.
+
+    Returns:
+        The summary CSV and total-returns JSON paths.
     """
     returns_stats_by_period, total_returns_by_period = get_aggregate_returns_by_period(
-        results
+        results, bins
     )
     df = get_df_aggregate_returns_by_period(returns_stats_by_period)
 
     df.to_csv(filename, index=False)
     logger.info(f"Summary data written to {filename}")
 
-    json_filename = filename.replace("summary", "total_returns").replace(
-        ".csv", ".json"
-    )
-    with open(json_filename, "w") as outfile:
+    json_filename = total_returns_path(filename)
+    with json_filename.open("w") as outfile:
         json.dump(total_returns_by_period, outfile)
     logger.info(f"Total returns data written to {json_filename}")
     return filename, json_filename
 
 
-def create_summary_files(files: Iterable[str]) -> list[tuple[str, str]]:
-    """
-    Prompts the user to select a file suffix from a list of file names.
+def create_summary_files(
+    out_dir: Path,
+    files: Iterable[Path],
+    years: Iterable[int],
+    bins: int = HISTOGRAM_BINS,
+) -> list[tuple[Path, Path]]:
+    """Summarize every model run found among the given returns files.
 
-    Parameters:
-    files (list of str): A list of file names.
+    Args:
+        out_dir: Directory holding the returns files.
+        files: Returns files (``returns_{years}_{model}_{timestamp}.csv``).
+        years: Window lengths every run must have.
+        bins: Histogram bins for the mode estimates.
 
     Returns:
-    str: The selected file suffix.
+        The (summary CSV, total-returns JSON) paths written, one pair per run.
     """
     # Extract unique suffixes from file names
     # returns_{years}_{suffix}
-    suffixes = list(
-        set("_".join(os.path.basename(filename).split("_")[2:]) for filename in files)
-    )
+    suffixes = sorted({returns_file_suffix(Path(f)) for f in files})
     logger.info("Suffixes extracted from file names")
-    unique_suffixes = {"_".join(x.split("_")[1:]) for x in suffixes}
-    for s in unique_suffixes:
+    for s in sorted({"_".join(x.split("_")[1:]) for x in suffixes}):
         logger.info(f"  - {s}")
+    years = list(years)
     files_created = []
-    years = range(1, 16)
     for i, suffix in enumerate(suffixes):
         logger.info(f"*** {i} of {len(suffixes)} *** {suffix}")
-        result = get_model_run_outputs(suffix, years=years)
-        fn, jfn = create_summary_file(*result)
-        files_created.append((fn, jfn))
+        result = get_model_run_outputs(out_dir, suffix, years=years)
+        files_created.append(create_summary_file(*result, bins=bins))
     return files_created
 
 
-def read_summary_data(filename: str) -> tuple[pd.DataFrame, dict[str, list[float]]]:
-    """
-    Reads summary data from a CSV file. Returns a dataframe.
-    :param filename:
-    :return:
+def read_summary_data(filename: Path) -> tuple[pd.DataFrame, dict[str, list[float]]]:
+    """Read a summary CSV and its total-returns JSON.
+
+    Args:
+        filename: Summary CSV path.
+
+    Returns:
+        The summary table and the total returns keyed by window length (as str).
     """
     df = pd.read_csv(filename)
-    json_filename = filename.replace("summary", "total_returns").replace(
-        ".csv", ".json"
-    )
-    with open(json_filename, "r") as infile:
+    with total_returns_path(filename).open() as infile:
         total_returns_by_period: dict[str, list[float]] = json.load(infile)
     return df, total_returns_by_period
 
 
-def get_model_comparison_data(files: Iterable[str], year: int = 10) -> pd.DataFrame:
-    rdata = []
-    for p in files:
-        d, h = read_summary_data(p)
-        rdata.append(d.iloc[year - 1].to_list())
-    drf = pd.DataFrame(
-        rdata,
-        columns=[
-            "sample_size",
-            "time_span",
-            "model_name",
-            "mean_total_returns",
-            "mean_yearly_compound_returns",
-            "median_total_returns",
-            "median_yearly_returns",
-            "sdev_total_returns",
-            "sdev_yearly_returns",
-            "fraction_losing_starts",
-            "mode_total_returns",
-            "mode_yearly_returns",
-        ],
-    )
-    drf = drf.sort_values("mean_total_returns")
-    return drf
+def get_model_comparison_data(files: Iterable[Path], year: int = 10) -> pd.DataFrame:
+    """Collect one window length's summary row from each model's summary file.
+
+    Args:
+        files: Summary CSV paths, one per model.
+        year: Window length in years to compare.
+
+    Returns:
+        One row per model, sorted by mean total return.
+    """
+    rows = []
+    for path in files:
+        summary, _ = read_summary_data(path)
+        rows.append(summary.loc[summary["time_span"] == year].iloc[0].to_list())
+    comparison = pd.DataFrame(rows, columns=SUMMARY_COLUMNS)
+    return comparison.sort_values("mean_total_returns")

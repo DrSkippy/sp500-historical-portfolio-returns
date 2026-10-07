@@ -1,6 +1,7 @@
 import unittest
 import datetime
 import math
+from returns.types import PriceBar
 from returns.models import Model
 
 
@@ -26,23 +27,27 @@ class TestModel(unittest.TestCase):
     def test_first_trade(self) -> None:
         self.model.capital = 10000
         date = datetime.datetime(2020, 1, 1)
-        price = [100, 0]  # Example price
+        price = PriceBar(100, 0)  # Example price
         self.model.first_trade(date, price)
         self.assertEqual(self.model.shares, 100)
         self.assertEqual(self.model.capital, 0)
         self.assertEqual(len(self.model.trades), 1)
-        self.assertTupleEqual(self.model.trades[0], (date, [100, 0], 100, 0, 100))
+        self.assertTupleEqual(
+            self.model.trades[0], (date, PriceBar(100, 0), 100, 0, 100)
+        )
 
     def test_last_trade(self) -> None:
         self.model.shares = 100
         self.model.capital = 0
         date = datetime.datetime(2021, 1, 1)
-        price = [100, 0]  # Example price
+        price = PriceBar(100, 0)  # Example price
         self.model.last_trade(date, price)
         self.assertEqual(self.model.shares, 0)
         self.assertEqual(self.model.capital, 10000)
         self.assertEqual(len(self.model.trades), 1)
-        self.assertTupleEqual(self.model.trades[0], (date, [100, 0], -100, 10000, 0))
+        self.assertTupleEqual(
+            self.model.trades[0], (date, PriceBar(100, 0), -100, 10000, 0)
+        )
 
     def test_daily_trade(self) -> None:
         # Window 1 year
@@ -51,11 +56,13 @@ class TestModel(unittest.TestCase):
         _capital = self.model.capital
         _len_trades = len(self.model.trades)
         # Daily trade does nothing except move to end of window!
-        result = self.model.daily_trade(datetime.datetime(2020, 6, 1), [100, 0])
+        result = self.model.daily_trade(datetime.datetime(2020, 6, 1), PriceBar(100, 0))
         # Jump to end of window - 6 days padding
         self.assertEqual(result, datetime.datetime(2020, 12, 26, 0, 0))
         # Daily trade does nothing except move to end of window!
-        result = self.model.daily_trade(datetime.datetime(2020, 12, 27), [100, 0])
+        result = self.model.daily_trade(
+            datetime.datetime(2020, 12, 27), PriceBar(100, 0)
+        )
         # Already in the padding period
         self.assertEqual(result, None)
         # Daily trade does nothing except move to end of window, so no changes to model
@@ -72,12 +79,14 @@ class TestModel(unittest.TestCase):
         self.model.shares = 0
         self.model.capital = 10000
         date = datetime.datetime(2020, 1, 1)
-        price = [100, 0]
+        price = PriceBar(100, 0)
         skip = self.model.trade(date, price)
         self.assertEqual(self.model.shares, 100)
         self.assertEqual(self.model.capital, 0)
         self.assertEqual(len(self.model.trades), 1)
-        self.assertTupleEqual(self.model.trades[0], (date, [100, 0], 100, 0, 100))
+        self.assertTupleEqual(
+            self.model.trades[0], (date, PriceBar(100, 0), 100, 0, 100)
+        )
         self.assertFalse(self.model.first_trigger)
         self.assertTrue(self.model.last_trigger)
         self.assertIsNone(skip)
@@ -91,7 +100,7 @@ class TestModel(unittest.TestCase):
         self.model.shares = 100
         self.model.capital = 0
         date = datetime.datetime(2020, 1, 15)
-        price = [100, 0]
+        price = PriceBar(100, 0)
         skip = self.model.trade(date, price)
         self.assertEqual(self.model.shares, 100)
         self.assertEqual(self.model.capital, 0)
@@ -108,7 +117,7 @@ class TestModel(unittest.TestCase):
         self.model.shares = 100
         self.model.capital = 0
         date = datetime.datetime(2021, 12, 31)
-        price = [100, 0]
+        price = PriceBar(100, 0)
         skip = self.model.trade(date, price)
         self.assertEqual(self.model.shares, 0)
         self.assertEqual(self.model.capital, 10000)
@@ -120,7 +129,7 @@ class TestModel(unittest.TestCase):
         # Test the 'status' method by checking its output
         self.model.capital = 10000
         date = datetime.datetime(2020, 1, 1)
-        price = [100, 0]  # Example price
+        price = PriceBar(100, 0)  # Example price
         self.model.first_trade(date, price)
         self.assertEqual(len(self.model.status()), 2)
         self.assertEqual(
@@ -144,8 +153,8 @@ class TestModel(unittest.TestCase):
         # Test the 'total_returns' method by simulating trades
         # Example: self.model.total_returns()
         # Add assertions here
-        self.model.first_trade(datetime.datetime(2020, 1, 1), [100, 0])
-        self.model.last_trade(datetime.datetime(2020, 12, 31), [100, 0])
+        self.model.first_trade(datetime.datetime(2020, 1, 1), PriceBar(100, 0))
+        self.model.last_trade(datetime.datetime(2020, 12, 31), PriceBar(100, 0))
         result = self.model.total_returns()
         self.assertEqual(len(self.model.trades), 2)
         self.assertEqual(result[0], datetime.datetime(2020, 1, 1))

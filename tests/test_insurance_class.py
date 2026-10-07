@@ -1,6 +1,7 @@
 import unittest
 import datetime
 
+from returns.types import PriceBar
 from returns.models import InsuranceModel, KellyModel
 
 
@@ -31,7 +32,7 @@ class TestInsuranceModel(unittest.TestCase):
         self.insurance_model.capital = 10000
         self.insurance_model.last_rebalance = datetime.datetime(2020, 1, 1)
         date = datetime.datetime(2020, 4, 1)
-        price = [100, -0.10]
+        price = PriceBar(100, -0.10)
         self.insurance_model.rebalance(date, price)
         # 9740.04 is capital after interest, sell ~ 2 shares
         self.assertAlmostEqual(self.insurance_model.capital, 9974.074037685497)
@@ -43,7 +44,7 @@ class TestInsuranceModel(unittest.TestCase):
         self.insurance_model.last_rebalance = datetime.datetime(2020, 1, 1)
         self.insurance_model.last_price = [100, 100, 100]  # only 3 days of history
         date = datetime.datetime(2020, 1, 10)
-        price = [100, -0.10]  # interest rate should be irrelevant here!
+        price = PriceBar(100, -0.10)  # interest rate should be irrelevant here!
         self.insurance_model.daily_trade(date, price)
         self.assertEqual(self.insurance_model.shares, 900)
         self.assertEqual(self.insurance_model.capital, 10000)
@@ -66,7 +67,7 @@ class TestInsuranceModel(unittest.TestCase):
             88,
         ]  # only 6 days of history, 15% drop
         date = datetime.datetime(2020, 1, 10)
-        price = [84, -0.10]  # interest rate should be irrelevant here!
+        price = PriceBar(84, -0.10)  # interest rate should be irrelevant here!
         self.insurance_model.daily_trade(date, price)
         # 16% drop, 10x payout on 10000 ~ 16000
         # 90000 -> 84000 stock value is a loss of 15000 so by 8000/84 ~ 96 shares
@@ -86,7 +87,7 @@ class TestInsuranceModel(unittest.TestCase):
         self.insurance_model.last_rebalance = datetime.datetime(2020, 1, 1)
         self.insurance_model.last_price = [100, 100, 100, 100, 100, 100]
         date = datetime.datetime(2020, 1, 4)  # 3 days < 90-day rebalance period
-        price = [99, -0.005]  # 1% loss, below 15% deductible
+        price = PriceBar(99, -0.005)  # 1% loss, below 15% deductible
         self.insurance_model.daily_trade(date, price)
         self.assertEqual(self.insurance_model.shares, 900)
         self.assertEqual(self.insurance_model.capital, 10000)

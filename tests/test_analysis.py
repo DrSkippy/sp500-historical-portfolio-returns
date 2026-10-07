@@ -20,11 +20,25 @@ from returns.types import SUMMARY_COLUMNS
 
 class TestCalculateMode:
     def test_calculate_mode(self) -> None:
-        # Cluster data at ~25 within [0, 50]; peak must NOT be in bin 0 to avoid edge case
         data = np.array([25.0] * 800 + [24.0] * 100 + [26.0] * 100)
         hist = np.histogram(data, bins=45, range=(0, 50))
         mode = calculate_mode(hist)
         assert 23 < mode < 26
+
+    def test_mode_is_centre_of_peak_bin(self) -> None:
+        counts = np.array([1, 5, 2])
+        edges = np.array([0.0, 1.0, 2.0, 3.0])
+        assert calculate_mode((counts, edges)) == 1.5
+
+    def test_peak_in_first_bin(self) -> None:
+        counts = np.array([9, 1, 1])
+        edges = np.array([0.0, 1.0, 2.0, 3.0])
+        assert calculate_mode((counts, edges)) == 0.5
+
+    def test_peak_in_last_bin(self) -> None:
+        counts = np.array([1, 1, 9])
+        edges = np.array([0.0, 1.0, 2.0, 3.0])
+        assert calculate_mode((counts, edges)) == 2.5
 
 
 class TestAggregateReturns:

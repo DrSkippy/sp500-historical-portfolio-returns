@@ -19,21 +19,18 @@ MODEL_NAME_COLUMN = 4
 
 
 def calculate_mode(hist_data: tuple[npt.NDArray[Any], npt.NDArray[Any]]) -> float:
-    """Calculate the mode of a histogram.
+    """Calculate the mode of a histogram as the centre of its highest-count bin.
 
     Args:
-        hist_data: ``(counts, bin_edges)`` as returned by ``np.histogram``.
+        hist_data: ``(counts, bin_edges)`` as returned by ``np.histogram``; bin
+            ``i`` spans ``bin_edges[i]`` to ``bin_edges[i + 1]``.
 
     Returns:
-        The average of the bin edges at the peak count's index and the one before it.
+        The midpoint of the peak bin (the first one, if several tie).
     """
-    return float(
-        (
-            hist_data[1][np.argmax(hist_data[0])]
-            + hist_data[1][np.argmax(hist_data[0]) - 1]
-        )
-        / 2
-    )
+    counts, edges = hist_data
+    peak = int(np.argmax(counts))
+    return float((edges[peak] + edges[peak + 1]) / 2)
 
 
 def aggregate_returns(

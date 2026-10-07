@@ -38,8 +38,9 @@ only `gh-pages` carries them.
   intentional result change, regenerate with `UPDATE_GOLDEN=1 poetry run pytest
   tests/test_golden_master.py` in the same commit and say why in the message.
 - **Test edge cases explicitly.** Known sharp edges in this codebase:
-  - `calculate_mode` (`analysis.py`): when `argmax == 0`, `bins[argmax - 1]` wraps to the
-    last bin — test data must place the histogram peak away from bin 0.
+  - `calculate_mode` (`analysis.py`): `np.histogram` returns bin *edges* (one more than the
+    counts); bin `i` spans `edges[i]..edges[i+1]`. The mode is that bin's centre. (Before
+    2026-10-07 it used `edges[i-1]`, one bin low and wrapping at `i == 0`.)
   - `model_name` mutation: `model_config()` must assign (`=`), never append (`+=`), or the
     name accumulates across the ~5,800 calls made per full backtest run.
 - **Prefer `pytest`-style functions and fixtures** over `unittest.TestCase` for new tests.

@@ -15,7 +15,8 @@ class TestInsuranceModel(unittest.TestCase):
         self.assertEqual(self.insurance_model.init_capital, 10000)
         self.assertEqual(self.insurance_model.init_insurance_frac, 0.10)
         self.assertEqual(self.insurance_model.init_insurance_period, 90)
-        self.assertEqual(self.insurance_model.init_insurance_rate, -0.005)
+        self.assertEqual(self.insurance_model.premium_rate, 0.012)
+        self.assertEqual(self.insurance_model.coverage_ratio, 1.0)
         self.assertEqual(self.insurance_model.init_insurance_deductible, 0.15)
         self.assertEqual(self.insurance_model.model_name, "Insurance_0.1_0.15_90")
         self.assertEqual(self.insurance_model.stock_frac, 0.90)
@@ -47,7 +48,10 @@ class TestInsuranceModel(unittest.TestCase):
         price = PriceBar(100, -0.10)  # interest rate should be irrelevant here!
         self.insurance_model.daily_trade(date, price)
         self.assertEqual(self.insurance_model.shares, 900)
-        self.assertEqual(self.insurance_model.capital, 10000)
+        # 9 days of premium on $90,000 of insured stock
+        self.assertAlmostEqual(
+            self.insurance_model.capital, 10000 - 0.012 * 90000 * 9 / 365
+        )
         self.assertEqual(len(self.insurance_model.trades), 0)
         self.assertEqual(
             self.insurance_model.last_rebalance, datetime.datetime(2020, 1, 1)
@@ -67,18 +71,20 @@ class TestInsuranceModel(unittest.TestCase):
             88,
         ]  # only 6 days of history, 15% drop
         date = datetime.datetime(2020, 1, 10)
-        price = PriceBar(84, -0.10)  # market interest rate should be irrelevant here!
+        price = PriceBar(84, 0.04)
         self.insurance_model.daily_trade(date, price)
-        # premium accrues for 9 days, then a 16% drop pays 10 x 16% = 1.6 x cash *into* cash
-        cash = 10000 * (1 - 0.005) ** (9 / 365)
-        cash += cash * 0.16 * 10
+        # 9 days of premium on the insured stock, 9 days of interest on the cash
+        cash = (10000 - 0.012 * 900 * 84 * 9 / 365) * 1.04 ** (9 / 365)
+        # the policy insures the stock: 900 shares worth $90,000 at the window start
+        # lose 16%; it pays the 1% beyond the 15% deductible = $900
+        cash += 90000 * (0.16 - 0.15)
         total = cash + 900 * 84
+        self.assertAlmostEqual(self.insurance_model.trades[0].capital, cash)
         self.assertAlmostEqual(self.insurance_model.capital, 0.1 * total)
         self.assertAlmostEqual(self.insurance_model.shares, 0.9 * total / 84)
         self.assertEqual(
             len(self.insurance_model.trades), 2
         )  # one payout and one rebalance
-        self.assertAlmostEqual(self.insurance_model.trades[0].capital, cash)
         self.assertEqual(
             self.insurance_model.last_rebalance, datetime.datetime(2020, 1, 10)
         )
@@ -94,7 +100,10 @@ class TestInsuranceModel(unittest.TestCase):
         price = PriceBar(99, -0.005)  # 1% loss, below 15% deductible
         self.insurance_model.daily_trade(date, price)
         self.assertEqual(self.insurance_model.shares, 900)
-        self.assertEqual(self.insurance_model.capital, 10000)
+        # 3 days of premium, no payout
+        self.assertAlmostEqual(
+            self.insurance_model.capital, 10000 - 0.012 * 900 * 99 * 3 / 365
+        )
         self.assertEqual(len(self.insurance_model.trades), 0)
         self.assertEqual(
             self.insurance_model.last_rebalance, datetime.datetime(2020, 1, 1)

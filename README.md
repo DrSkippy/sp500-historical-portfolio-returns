@@ -295,19 +295,27 @@ it rebalances back to target, applying daily compounding interest to the cash/bo
 
 ### Insurance (`InsuranceModel`)
 
-Rebalances like Kelly and watches a rolling 6-day price window (`loss_window_days`). The
-insurance cash (the `ins_frac` portion of the portfolio) accrues at `insurance_rate`
-(−0.5%/yr: the premium is a cost). If the price drops more than `insurance_deductible`
-(tested values: 9%, 12%, 18%) over the window, the policy pays out *into* the cash:
+**The policy insures the stock, not the cash.** The portfolio holds `1 − ins_frac` in stock
+and keeps `ins_frac` as a cash reserve that earns the market interest rate and pays the
+premium. Both are rebalanced back to target every `insurance_period` days.
 
-```
-reserve = reserve + reserve × |loss_fraction| × payout_factor   # payout_factor = 10
-```
+- **Premium**: `premium_rate` per year of the insured stock value, charged daily from cash
+  (default 1.2%/yr, i.e. $1/month per $1,000 insured).
+- **Trigger**: the price falls by at least `insurance_deductible` (tested values: 9%, 12%, 18%)
+  over a rolling 6-day window (`loss_window_days`).
+- **Payout**: the loss beyond the deductible on the insured stock, paid into cash:
 
-Premium is accrued up to the payout date first, a rebalance follows the same day, and the
-price history resets. A policy pays out at most once; it is renewed at the next scheduled
-rebalance (`insurance_period` days later). All of these parameters live under
-`models.insurance` in `config.yaml`.
+  ```
+  insured_value = shares × price at the start of the loss window
+  payout        = coverage_ratio × insured_value × (|loss_fraction| − deductible)
+  ```
+
+  Example: $1,000 of stock falls to $250 (75%) with an 18% deductible →
+  payout = 1000 × (0.75 − 0.18) = **$570**, whatever the size of the cash reserve.
+- A rebalance follows the payout the same day and the price history resets. A policy pays
+  out at most once; it is renewed at the next scheduled rebalance.
+
+Parameters live under `models.insurance` in `config.yaml`.
 
 ## Statistical output
 

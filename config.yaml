@@ -43,9 +43,12 @@ models:
   insurance:              # cross product of fracs x deductibles
     fracs: [0.05, 0.1]
     deductibles: [0.09, 0.12, 0.18]
+    # The policy insures the STOCK, not the cash reserve. A loss of at least `deductible`
+    # over loss_window_days pays coverage_ratio x insured stock value x (|loss| - deductible)
+    # into cash; at most one payout per policy period.
     period_days: 90       # policy / scheduled rebalance period
-    rate: -0.005          # annual rate on insurance cash; negative = premium cost
-    payout_factor: 10     # payout added to cash = |loss fraction| x payout_factor x insurance cash
+    premium_rate: 0.012   # annual premium, fraction of insured stock value (1.2%/yr = $1/mo per $1000)
+    coverage_ratio: 1.0   # fraction of the loss beyond the deductible that is paid
     loss_window_days: 6   # trading days over which the loss is measured
 
 # Return horizons for bin/generate_recent_returns.py (window in trading days)

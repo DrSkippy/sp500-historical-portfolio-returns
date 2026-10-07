@@ -66,8 +66,10 @@ class InsuranceGridConfig(_Strict):
     fracs: list[float] = [0.05, 0.1]
     deductibles: list[float] = [0.09, 0.12, 0.18]
     period_days: int = 90
-    rate: float = -0.005
-    payout_factor: float = 10
+    premium_rate: float = 0.012
+    """Annual premium as a fraction of the insured stock value."""
+    coverage_ratio: float = 1.0
+    """Fraction of the loss beyond the deductible that the policy pays."""
     loss_window_days: int = 6
 
 

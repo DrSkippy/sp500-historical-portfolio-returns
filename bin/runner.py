@@ -126,8 +126,8 @@ def all_model_specs(config: AppConfig) -> Iterator[tuple[str, dict[str, Any]]]:
                     "insurance_frac": frac,
                     "insurance_deductible": deductible,
                     "insurance_period": insurance.period_days,
-                    "insurance_rate": insurance.rate,
-                    "insurance_payout_factor": insurance.payout_factor,
+                    "premium_rate": insurance.premium_rate,
+                    "coverage_ratio": insurance.coverage_ratio,
                     "loss_window_days": insurance.loss_window_days,
                 },
             )

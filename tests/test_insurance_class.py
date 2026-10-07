@@ -67,19 +67,23 @@ class TestInsuranceModel(unittest.TestCase):
             88,
         ]  # only 6 days of history, 15% drop
         date = datetime.datetime(2020, 1, 10)
-        price = PriceBar(84, -0.10)  # interest rate should be irrelevant here!
+        price = PriceBar(84, -0.10)  # market interest rate should be irrelevant here!
         self.insurance_model.daily_trade(date, price)
-        # 16% drop, 10x payout on 10000 ~ 16000
-        # 90000 -> 84000 stock value is a loss of 15000 so by 8000/84 ~ 96 shares
-        self.assertEqual(self.insurance_model.capital, 9160.19678086083)
-        self.assertEqual(self.insurance_model.shares, 981.4496550922327)
+        # premium accrues for 9 days, then a 16% drop pays 10 x 16% = 1.6 x cash *into* cash
+        cash = 10000 * (1 - 0.005) ** (9 / 365)
+        cash += cash * 0.16 * 10
+        total = cash + 900 * 84
+        self.assertAlmostEqual(self.insurance_model.capital, 0.1 * total)
+        self.assertAlmostEqual(self.insurance_model.shares, 0.9 * total / 84)
         self.assertEqual(
             len(self.insurance_model.trades), 2
         )  # one payout and one rebalance
+        self.assertAlmostEqual(self.insurance_model.trades[0].capital, cash)
         self.assertEqual(
             self.insurance_model.last_rebalance, datetime.datetime(2020, 1, 10)
         )
         self.assertListEqual(self.insurance_model.last_price, [84])
+        self.assertFalse(self.insurance_model.policy_active)
 
     def test_daily_trade_without_insurance_payout(self) -> None:
         self.insurance_model.shares = 900

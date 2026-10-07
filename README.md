@@ -295,15 +295,19 @@ it rebalances back to target, applying daily compounding interest to the cash/bo
 
 ### Insurance (`InsuranceModel`)
 
-Rebalances like Kelly and watches a rolling 6-day price window (`loss_window_days`). If the price drops more than
-`insurance_deductible` (tested values: 9%, 12%, 18%) over that window, an insurance payout fires:
+Rebalances like Kelly and watches a rolling 6-day price window (`loss_window_days`). The
+insurance cash (the `ins_frac` portion of the portfolio) accrues at `insurance_rate`
+(−0.5%/yr: the premium is a cost). If the price drops more than `insurance_deductible`
+(tested values: 9%, 12%, 18%) over the window, the policy pays out *into* the cash:
 
 ```
-reserve = reserve × |loss_fraction| × payout_factor   # payout_factor = 10
+reserve = reserve + reserve × |loss_fraction| × payout_factor   # payout_factor = 10
 ```
 
-The reserve (the `ins_frac` portion of the portfolio) replaces its value with a leveraged
-multiple of the loss. A rebalance follows every payout, and the price history resets.
+Premium is accrued up to the payout date first, a rebalance follows the same day, and the
+price history resets. A policy pays out at most once; it is renewed at the next scheduled
+rebalance (`insurance_period` days later). All of these parameters live under
+`models.insurance` in `config.yaml`.
 
 ## Statistical output
 

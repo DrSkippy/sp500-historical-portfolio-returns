@@ -44,8 +44,8 @@ models:
     fracs: [0.05, 0.1]
     deductibles: [0.09, 0.12, 0.18]
     period_days: 90       # policy / scheduled rebalance period
-    rate: -0.005          # insurance rate
-    payout_factor: 10     # payout = loss fraction x payout_factor x insurance cash
+    rate: -0.005          # annual rate on insurance cash; negative = premium cost
+    payout_factor: 10     # payout added to cash = |loss fraction| x payout_factor x insurance cash
     loss_window_days: 6   # trading days over which the loss is measured
 
 # Return horizons for bin/generate_recent_returns.py (window in trading days)

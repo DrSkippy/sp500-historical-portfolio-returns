@@ -243,6 +243,10 @@ class PortfolioModel(ABC):
         """
         # Ensure there are enough trades to calculate returns
         if len(self.trades) < 2 or self.init_capital <= 0:
+            logger.warning(
+                f"{self.model_name} window starting {self.start_date} made "
+                f"{len(self.trades)} trade(s); reporting zero returns"
+            )
             return WindowReturn(self.start_date, 0, 0, 0, self.model_name)
 
         # Calculate time span in years

@@ -27,7 +27,9 @@ from returns.data import (
     total_returns_path,
 )
 from returns.errors import (
+    DataFileFormatError,
     DatasetConfigError,
+    MissingInterestDataError,
     IncompleteRunError,
     MissingPriceColumnError,
     NoMatchingRunError,
@@ -141,6 +143,49 @@ def test_get_combined_data_uses_last_interest_year_for_later_rows(
     dataset = load_dataset("qqq", load_config(write_config(tmp_path)))
     data, _ = get_combined_data(dataset)
     assert data[0][dataset.interest_index] == pytest.approx(0.04)
+
+
+def test_get_combined_data_missing_interest_year_raises(
+    tmp_path: Path, price_file: Path
+) -> None:
+    # prices are from 2020; rates start in 2021 (later years would reuse 2021's)
+    (tmp_path / "interest.tab").write_text("observation_date\tGS1\n2021-01-01\t4.0\n")
+    dataset = load_dataset("qqq", load_config(write_config(tmp_path)))
+    with pytest.raises(MissingInterestDataError, match=r"\[2020\]"):
+        get_combined_data(dataset)
+
+
+def test_get_combined_data_empty_interest_file_raises(
+    tmp_path: Path, price_file: Path
+) -> None:
+    (tmp_path / "interest.tab").write_text("observation_date\tGS1\n")
+    dataset = load_dataset("qqq", load_config(write_config(tmp_path)))
+    with pytest.raises(MissingInterestDataError, match="No interest rates"):
+        get_combined_data(dataset)
+
+
+def test_get_price_data_skips_blank_lines(tmp_path: Path) -> None:
+    path = tmp_path / "p.tab"
+    path.write_text(PRICE_HEADER + "Jan 01, 2020\t1\t1\t1\t1\t1\t1\n\n")
+    rows, _ = get_price_data(path)
+    assert len(rows) == 1
+
+
+@pytest.mark.parametrize(
+    "row", ["Jan 1st, 2020\t1\t1\t1\t1\t1\t1", "Jan 01, 2020\t1\tn/a\t1\t1\t1\t1"]
+)
+def test_get_price_data_bad_row_names_file_and_line(tmp_path: Path, row: str) -> None:
+    path = tmp_path / "p.tab"
+    path.write_text(PRICE_HEADER + "Jan 02, 2020\t1\t1\t1\t1\t1\t1\n" + row + "\n")
+    with pytest.raises(DataFileFormatError, match=r"p\.tab:3"):
+        get_price_data(path)
+
+
+def test_get_interest_data_bad_row_raises(tmp_path: Path) -> None:
+    path = tmp_path / "i.tab"
+    path.write_text("observation_date\tGS1\n2020-01-01\tN/A\n")
+    with pytest.raises(DataFileFormatError, match=r"i\.tab:2"):
+        get_interest_data(path)
 
 
 def test_create_combined_data_file_writes_dataset_path(

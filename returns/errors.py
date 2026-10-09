@@ -36,3 +36,23 @@ class DuplicateModelNameError(ReturnsError):
 
 class IncompleteRunError(ReturnsError):
     """A run's summary outputs don't cover every model the run's manifest lists."""
+
+
+class DatabaseConfigError(ReturnsError):
+    """The PG* connection variables are missing or invalid."""
+
+
+class DataFileFormatError(ReturnsError):
+    """A price or interest file has a row that cannot be parsed."""
+
+
+class MissingInterestDataError(ReturnsError):
+    """The interest file has no rate for a year the price data needs."""
+
+
+class QuoteDownloadError(ReturnsError):
+    """A quote download returned no usable data."""
+
+
+class EmptyHistoryError(ReturnsError):
+    """A historical distribution needed for ranking has no values."""

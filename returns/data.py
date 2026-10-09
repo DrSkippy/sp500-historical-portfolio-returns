@@ -6,7 +6,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, TypeVar
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -17,7 +17,9 @@ from returns.analysis import (
 )
 from returns.config import AppConfig, DatasetConfig, load_config
 from returns.errors import (
+    DataFileFormatError,
     IncompleteRunError,
+    MissingInterestDataError,
     MissingPriceColumnError,
     NoMatchingRunError,
     NoModelOutputsError,
@@ -25,6 +27,8 @@ from returns.errors import (
 from returns.types import SUMMARY_COLUMNS, Row
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 PRICE_DATE_FORMAT = "%b %d, %Y"
 OUTPUT_DATE_FORMAT = "%Y-%m-%d"
@@ -46,6 +50,14 @@ class Dataset:
     config: DatasetConfig
     interest_path: Path
     price_header: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Validate the price column eagerly.
+
+        Raises:
+            MissingPriceColumnError: If the price column is not in the header.
+        """
+        _ = self.price_index
 
     @property
     def price_index(self) -> int:
@@ -92,7 +104,6 @@ def load_dataset(name: str, config: AppConfig | None = None) -> Dataset:
         interest_path=config.sources.interest_path,
         price_header=tuple(read_header(dataset_config.price_path)),
     )
-    dataset.price_index  # validate the price column eagerly
     logger.info(f"Using dataset {name}: {dataset_config}")
     return dataset
 
@@ -100,6 +111,39 @@ def load_dataset(name: str, config: AppConfig | None = None) -> Dataset:
 def parse_number(text: str) -> float:
     """Parse a number that may contain comma thousands separators ("6,790.09")."""
     return float(text.replace(",", ""))
+
+
+def read_tsv(
+    path: Path, parse_row: Callable[[list[str]], T]
+) -> tuple[list[str], list[T]]:
+    """Read a tab-separated file with a header row, parsing each data row.
+
+    Blank lines are skipped.
+
+    Args:
+        path: File to read.
+        parse_row: Converts one row of fields.
+
+    Returns:
+        The header and the parsed rows, in file order.
+
+    Raises:
+        DataFileFormatError: If a row cannot be parsed (with its file and line).
+    """
+    with path.open() as infile:
+        reader = csv.reader(infile, delimiter="\t")
+        header = next(reader)  # Reading the header
+        parsed = []
+        for row in reader:
+            if not row:
+                continue
+            try:
+                parsed.append(parse_row(row))
+            except (ValueError, IndexError) as e:
+                raise DataFileFormatError(
+                    f"{path}:{reader.line_num}: cannot parse {row!r} ({e})"
+                ) from e
+    return header, parsed
 
 
 def get_interest_data(path: Path) -> tuple[dict[int, list[float]], list[str]]:
@@ -110,18 +154,18 @@ def get_interest_data(path: Path) -> tuple[dict[int, list[float]], list[str]]:
 
     Returns:
         Rates as fractions keyed by year, and the header without the date column.
+
+    Raises:
+        DataFileFormatError: If a row cannot be parsed.
     """
-    interest_data = {}
 
-    with path.open() as infile:
-        reader = csv.reader(infile, delimiter="\t")
-        header = next(reader)[1:]  # Reading the header
+    def parse_row(row: list[str]) -> tuple[int, list[float]]:
+        year = datetime.datetime.strptime(row[0], INTEREST_DATE_FORMAT).year
+        return year, [float(x) / PERCENT for x in row[1:]]
 
-        for row in reader:
-            if not row:
-                continue
-            year = datetime.datetime.strptime(row[0], INTEREST_DATE_FORMAT).year
-            interest_data[year] = [float(x) / PERCENT for x in row[1:]]
+    full_header, rows = read_tsv(path, parse_row)
+    header = full_header[1:]
+    interest_data = dict(rows)
 
     logger.info("Reading interest data")
     logger.info(f"Path = {path}")
@@ -139,17 +183,17 @@ def get_price_data(path: Path) -> tuple[list[Row], list[str]]:
 
     Returns:
         Rows of ``[date, value, ...]`` sorted by date, and the header.
+
+    Raises:
+        DataFileFormatError: If a row cannot be parsed.
     """
-    parsed_data: list[Row] = []
 
-    with path.open() as infile:
-        reader = csv.reader(infile, delimiter="\t")
-        header = next(reader)  # Reading the header
+    def parse_row(row: list[str]) -> Row:
+        # Parse date and data values
+        date = datetime.datetime.strptime(row[0], PRICE_DATE_FORMAT)
+        return [date] + [parse_number(x) for x in row[1:]]
 
-        for row in reader:
-            # Parse date and data values
-            date = datetime.datetime.strptime(row[0], PRICE_DATE_FORMAT)
-            parsed_data.append([date] + [parse_number(x) for x in row[1:]])
+    header, parsed_data = read_tsv(path, parse_row)
 
     # Sort data by date
     parsed_data.sort()
@@ -172,11 +216,25 @@ def get_combined_data(dataset: Dataset) -> tuple[list[Row], list[str]]:
 
     Returns:
         Combined rows sorted by date, and the combined header.
+
+    Raises:
+        MissingInterestDataError: If the interest file is empty, or has no rate
+            for a year of price data up to its last year.
     """
     logger.info("Combining price and interest data")
     prices, price_header = get_price_data(dataset.config.price_path)
     interest, interest_header = get_interest_data(dataset.interest_path)
+    if not interest:
+        raise MissingInterestDataError(f"No interest rates in {dataset.interest_path}")
     max_interest_year = max(interest.keys())
+    missing_years = sorted(
+        {min(row[0].year, max_interest_year) for row in prices} - interest.keys()
+    )
+    if missing_years:
+        raise MissingInterestDataError(
+            f"{dataset.interest_path} has no rate for years {missing_years} "
+            f"needed by {dataset.config.price_path}"
+        )
     combined = [row + interest[min(row[0].year, max_interest_year)] for row in prices]
     return combined, price_header + interest_header
 

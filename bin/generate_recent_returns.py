@@ -20,6 +20,7 @@ import numpy as np
 from returns.config import AppConfig, RecentPeriodConfig, load_config
 from returns.data import Dataset, get_price_data, load_dataset
 from returns.db import get_db_settings, get_quotes
+from returns.errors import EmptyHistoryError
 from returns.logging_setup import configure_logging
 from returns.types import Row
 
@@ -61,7 +62,13 @@ def compute_stats(values: Sequence[float]) -> dict[str, float]:
 
 
 def percentile_rank(hist_values: Sequence[float], recent_value: float) -> float:
-    """Fraction of historical values strictly less than recent_value, * 100."""
+    """Fraction of historical values strictly less than recent_value, * 100.
+
+    Raises:
+        EmptyHistoryError: If there are no historical values to rank against.
+    """
+    if not hist_values:
+        raise EmptyHistoryError("No historical returns to rank a recent return in")
     count = sum(1 for v in hist_values if v < recent_value)
     return count / len(hist_values) * 100.0
 

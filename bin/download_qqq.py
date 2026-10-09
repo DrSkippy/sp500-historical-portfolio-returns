@@ -25,6 +25,7 @@ from typing import Any
 import requests
 
 from returns.config import YahooConfig, load_config
+from returns.errors import QuoteDownloadError
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,11 @@ def fetch_chart(symbol: str, yahoo: YahooConfig) -> dict[str, Any]:
 
     Returns:
         The chart ``result`` object.
+
+    Raises:
+        requests.HTTPError: If the request fails.
+        QuoteDownloadError: If the response carries no chart result (Yahoo
+            reports e.g. an unknown symbol as ``"result": null`` plus an error).
     """
     params: dict[str, str | int] = {
         "period1": 0,
@@ -54,7 +60,13 @@ def fetch_chart(symbol: str, yahoo: YahooConfig) -> dict[str, Any]:
         timeout=yahoo.timeout_seconds,
     )
     resp.raise_for_status()
-    result: dict[str, Any] = resp.json()["chart"]["result"][0]
+    chart = resp.json().get("chart") or {}
+    results = chart.get("result")
+    if not results:
+        raise QuoteDownloadError(
+            f"No chart data for {symbol!r}: {chart.get('error') or 'empty result'}"
+        )
+    result: dict[str, Any] = results[0]
     return result
 
 
@@ -105,6 +117,8 @@ def main() -> None:
     symbol: str = args.symbol or dataset.recent_symbol
     out: Path = args.out or dataset.price_path
     rows = chart_to_rows(fetch_chart(symbol, config.sources.yahoo))
+    if not rows:
+        raise QuoteDownloadError(f"No complete trading days for {symbol!r}")
     with out.open("w") as f:
         f.write("\t".join(HEADER) + "\n")
         for row in rows:

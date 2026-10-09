@@ -86,9 +86,12 @@ def test_model_name_does_not_accumulate_across_windows() -> None:
     assert model.model_name == "Fractional_Kelly_0.2_90"
 
 
-def test_unconfigured_model_reports_zero_returns() -> None:
+def test_unconfigured_model_reports_zero_returns(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     result = make_buy_hold().total_returns()
     assert (result.frac_return, result.model_name) == (0, "Buy_Hold")
+    assert "made 0 trade(s); reporting zero returns" in caplog.text
 
 
 def test_skip_padding_is_configurable() -> None:

@@ -8,6 +8,7 @@ import pytest
 
 import returns.db
 from returns.db import DB_ENV_VARS, get_db_settings, get_quotes
+from returns.errors import DatabaseConfigError
 
 
 @pytest.fixture
@@ -39,7 +40,7 @@ def test_get_db_settings_missing_var_raises(
     db_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, var: str
 ) -> None:
     monkeypatch.delenv(var)
-    with pytest.raises(RuntimeError, match=var):
+    with pytest.raises(DatabaseConfigError, match=var):
         get_db_settings()
 
 
@@ -48,7 +49,15 @@ def test_get_db_settings_has_no_hardcoded_defaults(
 ) -> None:
     for var in DB_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(DatabaseConfigError):
+        get_db_settings()
+
+
+def test_get_db_settings_bad_port_raises(
+    db_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PGPORT", "fivefourthreefour")
+    with pytest.raises(DatabaseConfigError, match="PGPORT"):
         get_db_settings()
 
 

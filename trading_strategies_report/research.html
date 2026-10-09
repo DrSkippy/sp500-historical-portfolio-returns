@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Results vs Published Research — S&amp;P 500 Historical Portfolio Returns</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="strategies/strategies.css" />
+  <style>
+    .num-table { width: 100%; border-collapse: collapse; font-size: .86rem; margin: .75rem 0 1rem; }
+    .num-table th, .num-table td { padding: .4rem .6rem; border: 1px solid var(--color-border); text-align: right; white-space: nowrap; }
+    .num-table th { background: var(--color-bg); font-size: .76rem; text-transform: uppercase; letter-spacing: .04em; }
+    .num-table th:first-child, .num-table td:first-child { text-align: left; }
+    .num-table td.best { font-weight: 700; }
+    .num-table caption { caption-side: bottom; text-align: left; font-size: .8rem; color: var(--color-text-muted); padding-top: .4rem; }
+
+    .verdict { display: inline-block; padding: .15rem .6rem; border-radius: 999px; font-size: .78rem; font-weight: 700; color: #fff; vertical-align: middle; margin-left: .4rem; }
+    .verdict-agree   { background: #2ca02c; }
+    .verdict-nuance  { background: #b45309; }
+
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    .compare-card { border: 1px solid var(--color-border); border-radius: var(--radius); padding: .9rem 1.1rem; background: var(--color-bg); }
+    .compare-card h4 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-muted); margin-bottom: .45rem; }
+    .compare-card ul { padding-left: 1.1rem; font-size: .88rem; line-height: 1.6; }
+    .compare-card li { margin-bottom: .35rem; }
+    @media (max-width: 760px) { .compare-grid { grid-template-columns: 1fr; } }
+
+    .sources { padding-left: 1.3rem; font-size: .88rem; line-height: 1.6; }
+    .sources li { margin-bottom: .5rem; }
+    .sources a { overflow-wrap: anywhere; }
+    .sources .note { color: var(--color-text-muted); }
+    .ref { font-size: .75em; vertical-align: super; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Our Results vs Published Research</h1>
+    <p class="subtitle">How the Buy &amp; Hold, Fractional Kelly and Insurance backtests compare with the academic and industry literature</p>
+  </header>
+
+  <nav id="section-nav">
+    <a href="index.html">← Back to Report</a>
+    <span class="nav-divider">|</span>
+    <a href="#section-summary">Summary</a>
+    <a href="#section-kelly">Rebalancing &amp; Kelly</a>
+    <a href="#section-insurance">Insurance</a>
+    <a href="#section-horizon">Horizon Risk</a>
+    <a href="#section-differences">Differences</a>
+    <a href="#section-sources">Sources</a>
+    <span class="nav-divider">|</span>
+    <a href="strategies/buy-hold.html">Buy &amp; Hold ↗</a>
+    <a href="strategies/kelly.html">Kelly ↗</a>
+    <a href="strategies/insurance.html">Insurance ↗</a>
+    <a href="recent_returns.html">Recent Returns ↗</a>
+    <a href="research.html" class="nav-active">Research ↗</a>
+  </nav>
+
+  <main id="app">
+    <section id="section-summary" class="report-section">
+      <h2>Summary</h2>
+      <p>This site backtests three families of strategy over every start date (3-day stride) of the
+        S&amp;P 500 price index from 1956 to 2026 and QQQ from 1999 to 2026, for holding periods of
+        1–15 years. We searched for published work that studies the same questions with comparable
+        data. All three headline findings agree with that literature, with one caveat about how much
+        any US-only history can say about long horizons.</p>
+      <ul class="prose-list">
+        <li><strong>Buy &amp; Hold returns more than every constant-mix ("Fractional Kelly") variant, which in
+          turn has less volatility and fewer losing start dates.</strong> This is what Kelly/Merton
+          theory predicts when the growth-optimal stock fraction is above 100%, and in our data it
+          is (1.39 for the S&amp;P 500, 1.54 for QQQ). It also matches the rebalancing literature:
+          rebalancing controls risk; it does not add return in a trending market.
+          <span class="verdict verdict-agree">Agrees</span></li>
+        <li><strong>Crash insurance at a 1.2%/yr premium loses to simply holding less stock.</strong> The
+          premium is 2.3–9&times; what the policy actually paid out on the S&amp;P 500. Studies of real
+          index puts find the same thing: protection is priced above its expected payout (a volatility
+          risk premium), so protected portfolios trail and reducing equity exposure is the cheaper hedge.
+          <span class="verdict verdict-agree">Agrees</span></li>
+        <li><strong>The share of losing start dates falls with horizon, to zero at 15 years on the
+          S&amp;P 500.</strong> US-only studies show the same pattern, but larger international samples
+          and option-pricing arguments show long-horizon losses remain possible. Our 0% is a property
+          of one fortunate, overlapping US sample, not a guarantee.
+          <span class="verdict verdict-nuance">Agrees, with caveats</span></li>
+      </ul>
+
+      <h3>Our numbers (mean annualized return / share of start dates that lost money)</h3>
+      <div class="table-wrapper">
+        <table class="num-table">
+          <thead>
+            <tr><th>S&amp;P 500, 1956–2026</th><th>1 yr</th><th>5 yr</th><th>10 yr</th><th>15 yr</th></tr>
+          </thead>
+          <tbody>
+            <tr class="family-buy_hold"><td>Buy &amp; Hold</td><td class="best">8.67% / 26.7%</td><td class="best">7.50% / 17.7%</td><td class="best">7.16% / 8.4%</td><td class="best">7.02% / 0.0%</td></tr>
+            <tr class="family-kelly"><td>Kelly, 10% bonds, 180 d</td><td>8.28% / 25.7%</td><td>7.33% / 15.3%</td><td>7.05% / 4.9%</td><td>6.95% / 0.0%</td></tr>
+            <tr class="family-kelly"><td>Kelly, 25% bonds, 180 d</td><td>7.69% / 24.1%</td><td>7.03% / 10.4%</td><td>6.85% / 3.5%</td><td>6.81% / 0.0%</td></tr>
+            <tr class="family-insurance"><td>Insurance, 5% cash, 9% ded.</td><td>7.67% / 27.3%</td><td>6.65% / 18.9%</td><td>6.32% / 10.8%</td><td>6.19% / 0.1%</td></tr>
+            <tr class="family-insurance"><td>Insurance, 10% cash, 9% ded.</td><td>7.52% / 26.7%</td><td>6.60% / 17.2%</td><td>6.30% / 9.0%</td><td>6.19% / 0.0%</td></tr>
+          </tbody>
+        </table>
+        <table class="num-table">
+          <thead>
+            <tr><th>QQQ, 1999–2026</th><th>1 yr</th><th>5 yr</th><th>10 yr</th><th>15 yr</th></tr>
+          </thead>
+          <tbody>
+            <tr class="family-buy_hold"><td>Buy &amp; Hold</td><td>12.72% / 21.5%</td><td class="best">11.10% / 13.9%</td><td class="best">11.85% / 10.9%</td><td class="best">12.11% / 0.7%</td></tr>
+            <tr class="family-kelly"><td>Kelly, 10% bonds, 180 d</td><td>11.60% / 21.2%</td><td>10.35% / 13.0%</td><td>11.00% / 10.6%</td><td>11.23% / 0.0%</td></tr>
+            <tr class="family-kelly"><td>Kelly, 25% bonds, 180 d</td><td>9.95% / 20.6%</td><td>9.14% / 12.6%</td><td>9.64% / 10.0%</td><td>9.81% / 0.0%</td></tr>
+            <tr class="family-insurance"><td>Insurance, 5% cash, 9% ded.</td><td class="best">12.90% / 21.2%</td><td>10.98% / 13.5%</td><td>11.57% / 10.5%</td><td>11.80% / 0.0%</td></tr>
+            <tr class="family-insurance"><td>Insurance, 10% cash, 9% ded.</td><td>12.28% / 21.1%</td><td>10.56% / 13.1%</td><td>11.11% / 10.3%</td><td>11.32% / 0.0%</td></tr>
+          </tbody>
+          <caption>Price returns (no dividends); cash earns the 1-year Treasury rate; no taxes or trading
+            costs. Mean of the annualized return over every start date, and the fraction of start dates
+            whose total return was negative. Bold = highest mean in the column. Full tables for all 15
+            variants are on the <a href="index.html">main report</a>
+            (<a href="index.html?dataset=qqq">QQQ</a>).</caption>
+        </table>
+      </div>
+    </section>
+
+    <section id="section-kelly" class="report-section family-kelly-section">
+      <h2>1 · Rebalanced mixes vs Buy &amp; Hold <span class="verdict verdict-agree">Agrees</span></h2>
+      <p>The "Fractional Kelly" variants hold a fixed 75–90% in stocks and the rest in cash, and
+        rebalance every 90 or 180 days. Kelly's criterion (maximize the expected log of wealth) applied to
+        a lognormal stock and a risk-free asset gives Merton's growth-optimal stock fraction
+        <code>f* = (μ − r) / σ²</code>. Rotando and Thorp applied the Kelly criterion to the US stock
+        market in 1992<a class="ref" href="#src-rotando">[1]</a>. Using the same daily data the backtest
+        uses:</p>
+      <div class="table-wrapper">
+        <table class="num-table">
+          <thead><tr><th>Dataset</th><th>Price CAGR</th><th>σ (annual)</th><th>Mean 1-yr Treasury</th><th>Kelly f*</th><th>Our variants as a fraction of f*</th></tr></thead>
+          <tbody>
+            <tr><td>S&amp;P 500 (1956–2026)</td><td>7.33%</td><td>16.1%</td><td>4.77%</td><td>1.39</td><td>0.54–0.65</td></tr>
+            <tr><td>QQQ (1999–2026)</td><td>10.24%</td><td>26.8%</td><td>2.23%</td><td>1.54</td><td>0.49–0.58</td></tr>
+          </tbody>
+          <caption>Computed from daily log returns of the price files and the interest-rate file the
+            backtest uses. Dividends are excluded, which understates μ; including them would push f*
+            higher still.</caption>
+        </table>
+      </div>
+      <p>Because f* &gt; 1, every unlevered mix is <em>below</em> the growth-optimal fraction, so expected
+        growth rises monotonically toward 100% stock. That is exactly the ordering in the backtest. The
+        theory's growth gap between 100% and 75% stock on the S&amp;P 500 is 0.33 points a year (7.07% vs
+        6.74%); the backtest's 15-year gap is 0.21 points (7.02% vs 6.81%).</p>
+
+      <div class="compare-grid">
+        <div class="compare-card">
+          <h4>Literature</h4>
+          <ul>
+            <li>Fractional Kelly (part Kelly portfolio, part risk-free) gives up some growth for much lower
+              volatility and drawdown risk<a class="ref" href="#src-maclean">[2]</a>.</li>
+            <li>Perold and Sharpe: constant-mix rebalancing does best in volatile, trendless markets and
+              worse than buy-and-hold in trending ones<a class="ref" href="#src-perold">[3]</a>.</li>
+            <li>Vanguard (US stocks/bonds, 1926–2009): the goal of rebalancing is risk control, not higher
+              return; monthly, quarterly and annual rebalancing give similar risk-adjusted
+              results<a class="ref" href="#src-vanguard">[4]</a>.</li>
+          </ul>
+        </div>
+        <div class="compare-card">
+          <h4>This backtest</h4>
+          <ul>
+            <li>Every Kelly variant has lower mean return <em>and</em> lower dispersion than Buy &amp; Hold.
+              On the S&amp;P 500 at 10 years, 25% bonds cuts the losing share from 8.4% to 3.5% for
+              0.31 points a year of return.</li>
+            <li>1956–2026 was a strongly trending market, so Buy &amp; Hold winning on return is the
+              Perold–Sharpe prediction.</li>
+            <li>90-day and 180-day rebalancing differ by at most 0.02 points a year at any horizon on the
+              S&amp;P 500 (0.06 on QQQ): frequency barely matters, as Vanguard found.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="section-insurance" class="report-section family-insurance-section">
+      <h2>2 · Paying for crash protection <span class="verdict verdict-agree">Agrees</span></h2>
+      <p>The Insurance strategy buys a stylized policy that pays the loss beyond a deductible on the
+        insured stock when the price falls sharply over 6 trading days, for a premium of 1.2% a year.
+        Our <a href="https://github.com/DrSkippy/sp500-historical-portfolio-returns/blob/main/docs/insurance_parameter_scan.md">parameter scan</a>
+        measured the <em>fair</em> premium: what the policy actually paid out per year of insured value
+        over the full history.</p>
+      <div class="table-wrapper">
+        <table class="num-table">
+          <thead><tr><th>Deductible</th><th>Fair premium, S&amp;P 500</th><th>1.2% charged ÷ fair</th><th>Fair premium, QQQ</th><th>1.2% charged ÷ fair</th></tr></thead>
+          <tbody>
+            <tr><td>9%</td><td>0.52%/yr</td><td>2.3&times;</td><td>1.33%/yr</td><td>0.9&times;</td></tr>
+            <tr><td>12%</td><td>0.14%/yr</td><td>8.9&times;</td><td>0.29%/yr</td><td>4.1&times;</td></tr>
+            <tr><td>18%</td><td>0.25%/yr</td><td>4.7&times;</td><td>0.24%/yr</td><td>5.0&times;</td></tr>
+          </tbody>
+          <caption>Total payouts ÷ insured-value-years for one continuous policy with coverage 1.0 and no
+            premium. From the 2026-10-07 scan.</caption>
+        </table>
+      </div>
+
+      <div class="compare-grid">
+        <div class="compare-card">
+          <h4>Literature</h4>
+          <ul>
+            <li>Index puts are systematically overpriced relative to their payoff: expected put returns are
+              below the risk-free rate, and at-the-money straddles lose about 3% a
+              week<a class="ref" href="#src-coval">[5]</a>.</li>
+            <li>Israelov, using the Cboe S&amp;P 500 5% Put Protection Index (PPUT) from 1986: protection
+              cut equity beta to about 0.74 with negative alpha (about −1.8% a year), and holding less
+              stock produced the same return with lower drawdowns, lower volatility and a higher Sharpe
+              ratio<a class="ref" href="#src-israelov">[6]</a><a class="ref" href="#src-cxo">[7]</a>.</li>
+            <li>Cboe's own figures: PPUT's maximum drawdown was 38.9% vs 51.0% for the S&amp;P 500 over 37
+              years to June 2023, with lower annualized returns<a class="ref" href="#src-cboe">[8]</a>.</li>
+            <li>Harvey et al. (2019) put the cost of a passive at-the-money put program at roughly −3.9% a
+              year over 1985–2018, as cited by Janus
+              Henderson<a class="ref" href="#src-man">[9]</a><a class="ref" href="#src-janus">[10]</a>.</li>
+          </ul>
+        </div>
+        <div class="compare-card">
+          <h4>This backtest</h4>
+          <ul>
+            <li>On the S&amp;P 500, where the 1.2% premium is 2.3–9&times; fair, every insurance variant trails
+              <em>both</em> Buy &amp; Hold and every Kelly variant at every horizon. The best case cuts
+              the losing share by at most 0.6 points vs Buy &amp; Hold; 25% bonds cuts it by up to 8.7
+              points. This is the "pathetic protection" result.</li>
+            <li>Lowering stock exposure (Kelly) beats insuring it, as Israelov found with real puts.</li>
+            <li>The one exception confirms the pricing story: on QQQ the 9% policy's fair premium (1.33%)
+              is <em>above</em> the 1.2% charged, so it is underpriced insurance. That variant has the best
+              1-year mean on QQQ and no losing 15-year windows. A real seller would not offer it at that
+              price.</li>
+          </ul>
+        </div>
+      </div>
+      <p>One difference: a market put's price moves with implied volatility, so it costs most when a
+        crash looks likely. Our premium is a fixed rate, so the backtest does not capture that, and
+        real protection bought after a volatility spike would have cost more than our policy.</p>
+    </section>
+
+    <section id="section-horizon" class="report-section family-buy_hold-section">
+      <h2>3 · Does risk fall with the holding period? <span class="verdict verdict-nuance">Agrees, with caveats</span></h2>
+      <p>The backtest's share of losing start dates for Buy &amp; Hold on the S&amp;P 500 falls from 26.7% at
+        1 year to 8.4% at 10 years and 0.0% at 15 years, and the dispersion of annualized returns shrinks
+        from 15.8 to 3.7 points. That is the familiar "stocks for the long run" picture.</p>
+      <div class="compare-grid">
+        <div class="compare-card">
+          <h4>Literature</h4>
+          <ul>
+            <li>Fama and French bootstrap US monthly returns (1926–2016) and show that uncertainty about the
+              expected return itself has a large effect on long-horizon outcomes, even though it barely
+              matters at short horizons<a class="ref" href="#src-ff">[11]</a>.</li>
+            <li>Anarkulova, Cederburg and O'Doherty (39 developed markets, 1841–2019) estimate a 12% chance
+              that a diversified investor loses to inflation over 30 years. They argue the US record is
+              short and affected by survivor and easy-data
+              biases<a class="ref" href="#src-acod">[12]</a><a class="ref" href="#src-acod-hls">[13]</a>.</li>
+            <li>Bodie: the cost of insuring against earning less than the risk-free rate <em>rises</em> with
+              the horizon, even if returns mean-revert. This is disputed but widely
+              cited<a class="ref" href="#src-bodie">[14]</a><a class="ref" href="#src-bodie-reply">[15]</a>.</li>
+          </ul>
+        </div>
+        <div class="compare-card">
+          <h4>This backtest</h4>
+          <ul>
+            <li>The 15-year windows overlap heavily. 70 years of data hold fewer than five independent
+              15-year periods, so "0 of 6,647 windows lost money" is much weaker evidence than it
+              looks.</li>
+            <li>Losses here are <em>nominal</em>; a real (inflation-adjusted) loss count would be higher,
+              especially for windows starting in the 1960s–70s.</li>
+            <li>QQQ already shows a 0.7% losing share at 15 years: the 11 losing windows all started
+              between March and August 2000, at the dot-com peak. One badly timed entry is enough to break
+              the pattern, as the international evidence warns.</li>
+          </ul>
+        </div>
+      </div>
+      <p>Bodie's result also bears on the Insurance strategy: protecting a long horizon is expensive. The
+        backtest sidesteps that by renewing a 90-day policy, so it insures short sharp falls, not slow
+        bear markets like 2000–02 or 2007–09.</p>
+    </section>
+
+    <section id="section-differences" class="report-section">
+      <h2>Where this backtest differs from the studies</h2>
+      <ul class="prose-list">
+        <li><strong>Price returns only.</strong> The S&amp;P 500 file is the price index and QQQ uses split-adjusted
+          close. Most studies use total returns. For comparison, Damodaran's S&amp;P 500 series, which
+          includes dividends, is the standard long-run reference<a class="ref" href="#src-damodaran">[16]</a>.
+          Excluding dividends lowers every strategy's return, and lowers the stock-heavy strategies most.</li>
+        <li><strong>Cash earns the 1-year Treasury rate</strong> (annual average). Studies typically use 3-month
+          T-bills or a bond index.</li>
+        <li><strong>Nominal, pre-tax and cost-free.</strong> No inflation adjustment, taxes, bid–ask spreads or
+          rebalancing costs. Costs would widen Buy &amp; Hold's lead.</li>
+        <li><strong>Stylized insurance.</strong> The policy pays on a 6-day price loss with a fixed premium, not
+          a market-priced put. It is a cleaner thought experiment, but a real put's premium varies with
+          implied volatility.</li>
+        <li><strong>Overlapping windows from one market.</strong> Every start date 3 days apart is used, which
+          gives smooth distributions but few independent observations at long horizons.</li>
+      </ul>
+    </section>
+
+    <section id="section-sources" class="report-section">
+      <h2>Sources</h2>
+      <ol class="sources">
+        <li id="src-rotando">L. M. Rotando and E. O. Thorp (1992). "The Kelly Criterion and the Stock Market."
+          <em>The American Mathematical Monthly</em> 99(10): 922–931.
+          <a href="https://escholarship.org/uc/item/2sf6m38g">escholarship.org/uc/item/2sf6m38g</a></li>
+        <li id="src-maclean">L. C. MacLean, E. O. Thorp and W. T. Ziemba (2010). "Long-term capital growth: the
+          good and bad properties of the Kelly and fractional Kelly capital growth criteria."
+          <em>Quantitative Finance</em> 10(7). Working-paper version:
+          <a href="https://www.stat.berkeley.edu/~aldous/157/Papers/Good_Bad_Kelly.pdf">stat.berkeley.edu/~aldous/157/Papers/Good_Bad_Kelly.pdf</a></li>
+        <li id="src-perold">A. F. Perold and W. F. Sharpe (1988). "Dynamic Strategies for Asset Allocation."
+          <em>Financial Analysts Journal</em> 44(1).
+          <a href="https://rpc.cfainstitute.org/research/financial-analysts-journal/1988/dynamic-strategies-for-asset-allocation">rpc.cfainstitute.org (abstract)</a></li>
+        <li id="src-vanguard">C. M. Jaconetti, F. M. Kinniry and Y. Zilbering (2010). "Best Practices for Portfolio
+          Rebalancing." Vanguard Research. Reprinted by AAII:
+          <a href="https://www.aaii.com/files/journal/pdf/best-practices-for-portfolio-rebalancing.pdf">aaii.com (PDF)</a></li>
+        <li id="src-coval">J. D. Coval and T. Shumway (2001). "Expected Option Returns." <em>Journal of Finance</em>
+          56(3): 983–1009.
+          <a href="https://deepblue.lib.umich.edu/items/455dbe73-b56b-44f3-841f-c7751deffc7a">deepblue.lib.umich.edu</a></li>
+        <li id="src-israelov">R. Israelov (2019). "Pathetic Protection: The Elusive Benefits of Protective Puts."
+          <em>Journal of Alternative Investments</em>, Winter 2019 (AQR working paper 2017).
+          <a href="https://aqr.com/library/aqr-publications/pathetic-protection-the-elusive-benefits-of-protective-puts">aqr.com</a></li>
+        <li id="src-cxo">CXO Advisory, "Do Protective Equity Index Puts Work Well?" (summary of Israelov: PPUT vs
+          S&amp;P 500 total return, July 1986 – May 2016; beta 0.74, alpha −1.8%).
+          <a href="https://www.cxoadvisory.com/equity-options/do-protective-equity-index-puts-work-well/">cxoadvisory.com</a></li>
+        <li id="src-cboe">Cboe Insights, "Benchmark Indices Series: Hedging Downside Exposure with PPUT, CLL and
+          CLLZ Indices" (PPUT max drawdown 38.91% vs 50.95% for the S&amp;P 500 over 37 years through June 2023).
+          <a href="https://www.cboe.com/insights/posts/benchmark-indices-series-hedging-downside-exposure-with-pput-cll-and-cllz-indices">cboe.com</a></li>
+        <li id="src-man">C. R. Harvey, E. Hoyle, S. Rattray, M. Sargaison, D. Taylor and O. Van Hemert (2019).
+          "The Best of Strategies for the Worst of Times: Can Portfolios be Crisis Proofed?" Summary:
+          <a href="https://www.man.com/insights/best-of-strategies-for-the-worst-of-times">man.com</a></li>
+        <li id="src-janus">Janus Henderson, "Portfolio Protection: One Size Fits None" (cites Harvey et al.: passive
+          at-the-money long puts about −3.9% a year, 1985–2018, vs 10.8% a year for the S&amp;P 500).
+          <a href="https://www.cfala.org/files/Janus_Henderson-_Insights_-_Portfolio_Protection_-_One_Size_Fits_None.pdf">cfala.org (PDF)</a></li>
+        <li id="src-ff">E. F. Fama and K. R. French (2018). "Long-Horizon Returns." <em>Review of Asset Pricing
+          Studies</em>. Working paper:
+          <a href="https://www.chicagobooth.edu/research/fama-miller/finance-research/working-papers/2017/long-horizon-returns">chicagobooth.edu</a></li>
+        <li id="src-acod">A. Anarkulova, S. Cederburg and M. S. O'Doherty (2022). "Stocks for the Long Run? Evidence
+          from a Broad Sample of Developed Markets." <em>Journal of Financial Economics</em> 143(1): 409–433.
+          <a href="https://repository.arizona.edu/handle/10150/661101">repository.arizona.edu</a></li>
+        <li id="src-acod-hls">Authors' summary, Harvard Law School Forum on Corporate Governance (2021).
+          <a href="https://corpgov.law.harvard.edu/2021/12/13/stocks-for-the-long-run-evidence-from-a-broad-sample-of-developed-markets">corpgov.law.harvard.edu</a></li>
+        <li id="src-bodie">Z. Bodie (1995). "On the Risk of Stocks in the Long Run." <em>Financial Analysts
+          Journal</em> 51(3): 18–22.
+          <a href="https://rpc.cfainstitute.org/research/financial-analysts-journal/1995/on-the-risk-of-stocks-in-the-long-run">rpc.cfainstitute.org (abstract)</a></li>
+        <li id="src-bodie-reply">A 1996 critique of Bodie's argument, <em>Financial Analysts Journal</em>.
+          <a href="https://rpc.cfainstitute.org/en/research/financial-analysts-journal/1996/on-the-risk-of-stocks-in-the-long-run-a-resolution-to-the-debate">rpc.cfainstitute.org (abstract)</a></li>
+        <li id="src-damodaran">A. Damodaran, "Historical Returns on Stocks, Bonds and Bills: 1928–2024." NYU Stern.
+          <a href="https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html">pages.stern.nyu.edu</a></li>
+      </ol>
+      <p class="sources note">Figures attributed to sources were checked against the publisher or author pages
+        listed, or against the cited summary where the full text is paywalled. Our own figures come from the
+        report data published on this site (model version 2) and the
+        <a href="https://github.com/DrSkippy/sp500-historical-portfolio-returns/blob/main/docs/insurance_parameter_scan.md">insurance parameter scan</a>.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Based on S&amp;P 500 and QQQ daily price history. Past performance does not guarantee future results. This is not financial advice.</p>
+  </footer>
+</body>
+</html>

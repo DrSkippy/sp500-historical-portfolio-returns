@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import importlib.util
 import math
@@ -8,7 +9,7 @@ from typing import Any
 import pytest
 
 from returns.config import AppConfig, load_config
-from returns.models import InsuranceModel, KellyModel, Model
+from returns.models import BuyHoldModel, InsuranceModel, InsurancePolicy, KellyModel
 
 BIN_DIR = Path(__file__).parent.parent / "bin"
 
@@ -72,24 +73,24 @@ insurance_scan:
 # the existing assertions were written against).
 TEST_CAPITAL = 10000.0
 TEST_SKIP_PADDING = datetime.timedelta(days=6)
-KELLY_PARAMS: dict[str, Any] = {"bond_frac": 0.4, "rebalance_period": 90}
+KELLY_PARAMS: dict[str, Any] = {"bond_frac": 0.4, "rebalance_days": 90}
+TEST_POLICY = InsurancePolicy(
+    period_days=90, premium_rate=0.012, coverage_ratio=1.0, loss_window_days=6
+)
 INSURANCE_PARAMS: dict[str, Any] = {
     "insurance_frac": 0.10,
-    "insurance_period": 90,
-    "premium_rate": 0.012,
     "insurance_deductible": 0.15,
-    "coverage_ratio": 1.0,
-    "loss_window_days": 6,
 }
+POLICY_FIELDS = set(InsurancePolicy.__dataclass_fields__)
 
 
 def _with_common(params: dict[str, Any]) -> dict[str, Any]:
     return {"capital": TEST_CAPITAL, "skip_padding": TEST_SKIP_PADDING} | params
 
 
-def make_buy_hold(**overrides: Any) -> Model:
+def make_buy_hold(**overrides: Any) -> BuyHoldModel:
     """A Buy & Hold model with the test parameters, overridden by ``overrides``."""
-    return Model(**_with_common(overrides))
+    return BuyHoldModel(**_with_common(overrides))
 
 
 def make_kelly(**overrides: Any) -> KellyModel:
@@ -98,8 +99,17 @@ def make_kelly(**overrides: Any) -> KellyModel:
 
 
 def make_insurance(**overrides: Any) -> InsuranceModel:
-    """An InsuranceModel with the test parameters, overridden by ``overrides``."""
-    return InsuranceModel(**_with_common(INSURANCE_PARAMS | overrides))
+    """An InsuranceModel with the test parameters, overridden by ``overrides``.
+
+    Overrides named like ``InsurancePolicy`` fields (e.g. ``loss_window_days``)
+    change the policy; the rest go to the constructor.
+    """
+    policy_overrides = {k: v for k, v in overrides.items() if k in POLICY_FIELDS}
+    model_overrides = {k: v for k, v in overrides.items() if k not in POLICY_FIELDS}
+    policy = dataclasses.replace(TEST_POLICY, **policy_overrides)
+    return InsuranceModel(
+        **_with_common(INSURANCE_PARAMS | {"policy": policy} | model_overrides)
+    )
 
 
 def load_bin_module(name: str) -> ModuleType:

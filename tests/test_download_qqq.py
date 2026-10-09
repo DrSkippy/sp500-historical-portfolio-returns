@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from returns.config import AppConfig
+from returns.errors import QuoteDownloadError
 
 spec = importlib.util.spec_from_file_location(
     "download_qqq", Path(__file__).parent.parent / "bin" / "download_qqq.py"
@@ -90,3 +91,38 @@ def test_main_uses_yahoo_config_and_dataset_defaults(
         "Mar 11, 1999",
         "Mar 10, 1999",
     ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"chart": {"result": None, "error": {"code": "Not Found"}}},
+        {"chart": {"result": []}},
+        {},
+    ],
+)
+def test_fetch_chart_without_result_raises(
+    synthetic_config: AppConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, Any],
+) -> None:
+    monkeypatch.setattr(
+        download_qqq.requests, "get", lambda url, **kw: FakeResponse(payload)
+    )
+    with pytest.raises(QuoteDownloadError, match="'NOPE'"):
+        download_qqq.fetch_chart("NOPE", synthetic_config.sources.yahoo)
+
+
+def test_main_with_no_complete_days_raises(
+    synthetic_config: AppConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chart = make_chart([921076200], [None])
+    monkeypatch.setattr(
+        download_qqq.requests,
+        "get",
+        lambda url, **kw: FakeResponse({"chart": {"result": [chart]}}),
+    )
+    monkeypatch.setattr(download_qqq, "load_config", lambda: synthetic_config)
+    monkeypatch.setattr(sys, "argv", ["download_qqq", "--dataset", "synthetic"])
+    with pytest.raises(QuoteDownloadError, match="No complete trading days"):
+        download_qqq.main()

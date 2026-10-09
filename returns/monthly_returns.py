@@ -5,7 +5,6 @@ from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ class MonthlyReturns:
         prices = self.df[price_column]
         self.returns = (prices - prices.shift(offset)) / prices
         self.returns = self.returns.dropna().reset_index(drop=True)
-        logger.info(f"Monthly returns initialized with {len(self.returns)} samples.")
+        logger.info("Monthly returns initialized with %s samples.", len(self.returns))
 
     def write_to_csv(self, filename: str) -> None:
         """Write the monthly returns to a CSV file.
@@ -44,7 +43,7 @@ class MonthlyReturns:
             filename: The name of the file to write the returns to.
         """
         self.returns.to_csv(filename, index=False)
-        logger.info(f"Monthly returns written to {filename}")
+        logger.info("Monthly returns written to %s", filename)
 
     def sample(self, rng: np.random.Generator | None = None) -> float:
         """Draw one return uniformly at random.
@@ -69,20 +68,3 @@ class MonthlyReturns:
                 f"Maximum Return: {self.returns.max():.4f}",
             ]
         )
-
-    def plot_returns(self, bins: int) -> None:
-        """Show a histogram of the returns.
-
-        Args:
-            bins: Number of histogram bins (``monthly_returns.histogram_bins``).
-        """
-        plt.figure(figsize=(10, 5))
-        plt.hist(
-            self.returns.to_numpy(), bins=bins, label="Monthly Returns", color="blue"
-        )
-        plt.title("Monthly Returns Distribution")
-        plt.xlabel("Returns")
-        plt.ylabel("Frequency")
-        plt.legend()
-        plt.grid()
-        plt.show()

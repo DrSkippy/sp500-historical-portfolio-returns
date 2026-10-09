@@ -14,6 +14,10 @@ handlers:
     class: logging.StreamHandler
     formatter: simple
     stream: ext://sys.stdout
+  stderr:                      # for scripts whose stdout is data (transform_new_sp500_records.py)
+    class: logging.StreamHandler
+    formatter: simple
+    stream: ext://sys.stderr
   file:
     class: logging.FileHandler
     formatter: detailed

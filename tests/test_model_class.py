@@ -166,3 +166,14 @@ class TestModel(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_portfolio_model_is_abstract() -> None:
+    import datetime as dt
+
+    import pytest
+
+    from returns.models import PortfolioModel
+
+    with pytest.raises(TypeError, match="abstract"):
+        PortfolioModel(capital=1.0, skip_padding=dt.timedelta(days=1))  # type: ignore[abstract]

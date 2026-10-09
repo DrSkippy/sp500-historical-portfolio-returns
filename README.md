@@ -97,7 +97,7 @@ succeeded, the run writes a `run_{timestamp}.json` manifest recording the model 
 (`MODEL_VERSION` in `returns/models.py`) that produced it, every model variant, and the
 `backtest`/`models` config used; a crashed run has no manifest and is never summarized. The
 runner refuses to start if two grid variants would share a model name. Warnings go to
-`app1.log`; pass `--log-level INFO` (or `DEBUG`) for a per-trade trace, but expect a very large
+`app1.log`; pass `--log-level DEBUG` for a per-trade trace, but expect a very large
 log (tens to hundreds of GB for a full run). Insurance variants check for losses every trading
 day and dominate the runtime: a full S&P 500 run takes about 18 minutes on 24 cores, QQQ about 5.
 
@@ -225,7 +225,8 @@ poetry run python bin/transform_new_sp500_records.py < new_rows.txt
 ```
 
 The script reads the pasted rows on stdin and prints them in `.tab` format; prepend the output
-to `data/SP500.tab` (newest rows go first).
+to `data/SP500.tab` (newest rows go first). An incomplete trailing record is skipped with a
+warning on stderr, so it never ends up in the output.
 
 ### Run the analysis on QQQ (Nasdaq-100)
 
@@ -252,13 +253,21 @@ S&P 500 price-index methodology; set `price_column: "Adj Close**"` to include di
 ```
 sp500-historical-portfolio-returns/
 ├── returns/
-│   ├── models.py              # Model, KellyModel, InsuranceModel
+│   ├── models.py              # BuyHoldModel, KellyModel, InsuranceModel (+ InsurancePolicy)
+│   ├── backtest.py            # Typed model specs, the configured grid, model_tester
 │   ├── types.py               # PriceBar, Trade, WindowReturn, ReturnStats records
 │   ├── config.py              # Pydantic schema + loader for config.yaml
 │   ├── errors.py              # Package exceptions
 │   ├── logging_setup.py       # Logging from logging.yaml
-│   ├── data.py                # Data loading and combination
+│   ├── prices.py              # Price + interest loading and combination
+│   ├── runs.py                # Run manifests and each run's files
+│   ├── summaries.py           # Per-model summary CSV / total-returns JSON
+│   ├── naming.py              # Date formats and output file names
+│   ├── io_utils.py            # TSV reading, compact JSON writing
+│   ├── cli.py                 # Shared --dataset / --run options
+│   ├── finance.py             # Return arithmetic
 │   ├── analysis.py            # Aggregation and statistics
+│   ├── plotting.py            # Matplotlib plots (notebooks)
 │   ├── db.py                  # PostgreSQL access for recent quotes (PG* env vars)
 │   └── monthly_returns.py     # 30-day rolling return series
 ├── bin/
@@ -286,8 +295,11 @@ sp500-historical-portfolio-returns/
 │   ├── test_data.py
 │   ├── test_db.py
 │   ├── test_download_qqq.py
+│   ├── test_insurance_scan.py # notebooks/insurance_scan kwargs <-> spec mapping
+│   ├── test_naming.py
+│   ├── test_transform_new_sp500_records.py
 │   ├── test_monthly_returns.py
-│   └── test_runner.py         # model_tester early exit vs full scan
+│   └── test_backtest.py       # model_tester early exit vs full scan; model specs
 ├── data/
 │   ├── SP500.tab              # Daily OHLCV + Adj Close (Aug 1956 – Mar 2026)
 │   ├── QQQ.tab                # QQQ daily OHLCV, same layout (Mar 1999 – )

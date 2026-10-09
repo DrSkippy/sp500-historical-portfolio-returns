@@ -8,70 +8,122 @@ Usage:
     poetry run python notebooks/insurance_scan/fair_premium.py sp500 qqq
 """
 
+import argparse
+import dataclasses
 import datetime
-import sys
-from typing import Any
 
-from returns.config import load_config
-from returns.data import get_combined_data, load_dataset
-from returns.models import DAYS_PER_YEAR, InsuranceModel, days_to_years
+from returns.backtest import insurance_policy
+from returns.config import AppConfig, load_config
+from returns.prices import get_combined_data, load_dataset
+from returns.models import (
+    DAYS_PER_YEAR,
+    InsuranceModel,
+    InsurancePolicy,
+    days_to_years,
+)
 from returns.types import PriceBar
 
+LARGEST_EVENTS_SHOWN = 4
 
-class Tracking(InsuranceModel):
-    def __init__(self, **kw: Any) -> None:
-        super().__init__(**kw)
+
+class TrackingInsuranceModel(InsuranceModel):
+    """InsuranceModel that also totals payouts and insured exposure.
+
+    Attributes:
+        paid: Sum of all payouts.
+        exposure: Insured value x years (the premium base).
+        events: ``(date, loss)`` for each payout.
+    """
+
+    def __init__(
+        self,
+        *,
+        capital: float,
+        insurance_frac: float,
+        insurance_deductible: float,
+        policy: InsurancePolicy,
+        skip_padding: datetime.timedelta,
+    ) -> None:
+        super().__init__(
+            capital=capital,
+            insurance_frac=insurance_frac,
+            insurance_deductible=insurance_deductible,
+            policy=policy,
+            skip_padding=skip_padding,
+        )
         self.paid = 0.0
         self.exposure = 0.0  # insured value x years
         self.events: list[tuple[datetime.datetime, float]] = []
 
-    def _charge_premium(self, date, price):  # type: ignore[no-untyped-def]
+    def _charge_premium(self, date: datetime.datetime, price: PriceBar) -> None:
         days = (date - self.last_premium_date).days
         if days > 0:
             self.exposure += self.shares * price.price * days_to_years(days)
         super()._charge_premium(date, price)
 
-    def _pay_out(self, date, price, loss_frac, start_price):  # type: ignore[no-untyped-def]
-        amount = (
-            self.coverage_ratio
-            * self.shares
-            * start_price
-            * (-loss_frac - self.insurance_deductible)
-        )
-        self.paid += amount
+    def _pay_out(
+        self,
+        date: datetime.datetime,
+        price: PriceBar,
+        loss_frac: float,
+        start_price: float,
+    ) -> None:
+        self.paid += self.payout_amount(loss_frac, start_price)
         self.events.append((date, -loss_frac))
         super()._pay_out(date, price, loss_frac, start_price)
 
 
-config = load_config()
-scenario = config.insurance_scan.fair_premium
-insurance = config.models.insurance
-for ds in sys.argv[1:]:
-    dataset = load_dataset(ds, config)
+def report_dataset(name: str, config: AppConfig) -> None:
+    """Print the fair premium at each deductible for one continuous policy."""
+    scenario = config.insurance_scan.fair_premium
+    policy = dataclasses.replace(
+        insurance_policy(config.models.insurance),
+        premium_rate=scenario.premium_rate,
+        coverage_ratio=scenario.coverage_ratio,
+    )
+    dataset = load_dataset(name, config)
     rows, _ = get_combined_data(dataset)
-    years = (rows[-1][0] - rows[0][0]).days // DAYS_PER_YEAR - 1
+    first_date, last_date = rows[0][0], rows[-1][0]
+    years = (last_date - first_date).days // DAYS_PER_YEAR - 1
     print(
-        f"\n{ds}: {rows[0][0]:%Y}-{rows[-1][0]:%Y}, one continuous {years}-year policy,"
+        f"\n{name}: {first_date:%Y}-{last_date:%Y}, one continuous {years}-year policy,"
         f" coverage {scenario.coverage_ratio}, premium {scenario.premium_rate:.2%}"
     )
-    for d in scenario.deductibles:
-        m = Tracking(
+    for deductible in scenario.deductibles:
+        model = TrackingInsuranceModel(
             capital=config.backtest.initial_capital,
             skip_padding=config.backtest.skip_padding,
             insurance_frac=scenario.insurance_frac,
-            insurance_period=insurance.period_days,
-            premium_rate=scenario.premium_rate,
-            insurance_deductible=d,
-            coverage_ratio=scenario.coverage_ratio,
-            loss_window_days=insurance.loss_window_days,
+            insurance_deductible=deductible,
+            policy=policy,
         )
-        m.model_config(rows[0][0], years=years)
-        for r in rows:
-            m.trade(r[0], PriceBar(r[dataset.price_index], r[dataset.interest_index]))
-            if not m.last_trigger:
+        model.model_config(first_date, years=years)
+        for row in rows:
+            model.trade(
+                row[0], PriceBar(row[dataset.price_index], row[dataset.interest_index])
+            )
+            if not model.last_trigger:
                 break
-        big = sorted(m.events, key=lambda e: -e[1])[:4]
+        largest = sorted(model.events, key=lambda event: -event[1])
         print(
-            f"  deductible {d:4.0%}: {len(m.events):3d} payouts, fair premium {m.paid / m.exposure:6.3%}/yr"
-            f"  largest: " + ", ".join(f"{e[0]:%Y-%m-%d} {e[1]:.0%}" for e in big)
+            f"  deductible {deductible:4.0%}: {len(model.events):3d} payouts,"
+            f" fair premium {model.paid / model.exposure:6.3%}/yr  largest: "
+            + ", ".join(
+                f"{date:%Y-%m-%d} {loss:.0%}"
+                for date, loss in largest[:LARGEST_EVENTS_SHOWN]
+            )
         )
+
+
+def main() -> None:
+    """Report each dataset named on the command line."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("datasets", nargs="+", help="dataset keys from config.yaml")
+    args = parser.parse_args()
+    config = load_config()
+    for name in args.datasets:
+        report_dataset(name, config)
+
+
+if __name__ == "__main__":
+    main()

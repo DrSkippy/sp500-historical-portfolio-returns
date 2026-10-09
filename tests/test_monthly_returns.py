@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 
 from returns.monthly_returns import MonthlyReturns
+from returns.plotting import plot_monthly_returns
 
 OFFSET = 30
 
@@ -70,4 +71,4 @@ def test_write_and_plot(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     mr = _make_monthly_returns(60)
     mr.write_to_csv(str(tmp_path / "m.csv"))
     assert len((tmp_path / "m.csv").read_text().splitlines()) == 31
-    mr.plot_returns(bins=60)
+    plot_monthly_returns(mr, bins=60)

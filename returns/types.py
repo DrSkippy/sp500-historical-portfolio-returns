@@ -5,7 +5,10 @@ write directly with ``csv.writer``.
 """
 
 import datetime
-from typing import NamedTuple
+from typing import Any, NamedTuple
+
+Row = list[Any]
+"""A parsed data row: ``[date, values...]`` (combined rows append the interest values)."""
 
 
 class PriceBar(NamedTuple):

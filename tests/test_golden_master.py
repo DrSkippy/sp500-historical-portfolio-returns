@@ -18,11 +18,14 @@ import pytest
 
 from returns.config import load_config
 from returns.data import (
+    RunManifest,
     create_summary_file,
     get_model_run_outputs,
     load_dataset,
     returns_file_suffix,
+    run_summary_files,
 )
+from returns.models import MODEL_VERSION
 from tests.conftest import (
     INSURANCE_PARAMS,
     TEST_CAPITAL,
@@ -102,8 +105,16 @@ def run_pipeline(root: Path) -> dict[str, Any]:
             *get_model_run_outputs(out_dir, suffix, years=YEARS),
             bins=config.backtest.histogram_bins,
         )
+    run = RunManifest(
+        timestamp=DATE_STR,
+        model_version=MODEL_VERSION,
+        dataset="synthetic",
+        years=YEARS,
+        model_count=len(MODEL_SPECS),
+        model_names=runner.unique_model_names(MODEL_SPECS),
+    )
     report = generate_report.build_report_data(
-        generate_report.find_latest_files(out_dir), config.report.dist_years
+        run_summary_files(out_dir, run), config.report.dist_years
     )
 
     recent = json.loads(

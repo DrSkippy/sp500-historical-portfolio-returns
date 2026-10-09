@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from returns.errors import EmptyReturnsError, NoModelOutputsError
+from returns.errors import EmptyReturnsError
 from returns.types import SUMMARY_COLUMNS
 from tests.conftest import load_bin_module
 
@@ -67,24 +67,3 @@ def test_load_distributions_keeps_requested_years(tmp_path: Path) -> None:
         "1": [0.1],
         "5": [0.5],
     }
-
-
-def test_find_latest_files_picks_latest_complete_pair(tmp_path: Path) -> None:
-    for name in [
-        "summary_Buy_Hold_2026-01-01_0000.csv",
-        "summary_Buy_Hold_2026-02-01_0000.csv",
-        "total_returns_Buy_Hold_2026-01-01_0000.json",
-        "total_returns_Buy_Hold_2026-02-01_0000.json",
-        "summary_Insurance_0.1_0.09_90_2026-01-01_0000.csv",  # no JSON partner
-        "returns_1_Buy_Hold_2026-01-01_0000.csv",
-    ]:
-        (tmp_path / name).touch()
-    found = generate_report.find_latest_files(tmp_path)
-    assert list(found) == ["Buy_Hold"]
-    assert found["Buy_Hold"][0].name == "summary_Buy_Hold_2026-02-01_0000.csv"
-    assert found["Buy_Hold"][1].name == "total_returns_Buy_Hold_2026-02-01_0000.json"
-
-
-def test_find_latest_files_raises_when_nothing_matches(tmp_path: Path) -> None:
-    with pytest.raises(NoModelOutputsError):
-        generate_report.find_latest_files(tmp_path)

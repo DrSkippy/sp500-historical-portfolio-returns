@@ -164,6 +164,11 @@ def unique_model_names(specs: list[tuple[str, dict[str, Any]]]) -> list[str]:
     return names
 
 
+def new_run_timestamp() -> str:
+    """Run id for a run started now: ``YYYY-MM-DD_HHMM`` (sorts chronologically)."""
+    return datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
+
+
 def write_returns_csv(path: Path, rows: list[WindowReturn]) -> None:
     """Write window results with the standard returns header."""
     with path.open("w") as outfile:
@@ -227,9 +232,18 @@ def main() -> None:
     config = load_config()
     dataset = load_dataset(args.dataset, config)
     dataset.config.out_dir.mkdir(parents=True, exist_ok=True)
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
+    date_str = new_run_timestamp()
     specs = list(all_model_specs(config))
-    unique_model_names(specs)
+    model_names = unique_model_names(specs)
+    tasks = [
+        (years, class_name, kwargs, date_str, args.dataset, config)
+        for years in config.backtest.years
+        for class_name, kwargs in specs
+    ]
+    with mp.Pool() as pool:
+        pool.starmap(model_test_worker, tasks)
+    # Written only once every task has succeeded: summarize.py selects runs by
+    # manifest, so a crashed or interrupted run is never picked up.
     write_run_manifest(
         dataset.config.out_dir,
         RunManifest(
@@ -238,15 +252,13 @@ def main() -> None:
             dataset=args.dataset,
             years=list(config.backtest.years),
             model_count=len(specs),
+            model_names=model_names,
+            parameters={
+                "backtest": config.backtest.model_dump(mode="json"),
+                "models": config.models.model_dump(mode="json"),
+            },
         ),
     )
-    tasks = [
-        (years, class_name, kwargs, date_str, args.dataset, config)
-        for years in config.backtest.years
-        for class_name, kwargs in specs
-    ]
-    with mp.Pool() as pool:
-        pool.starmap(model_test_worker, tasks)
     logger.info("All model testing completed")
 
 

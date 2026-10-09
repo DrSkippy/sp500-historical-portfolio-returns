@@ -21,14 +21,17 @@ from returns.data import (
     read_summary_data,
     returns_file_suffix,
     run_returns_files,
+    run_summary_files,
     select_run,
     write_run_manifest,
     total_returns_path,
 )
 from returns.errors import (
     DatasetConfigError,
+    IncompleteRunError,
     MissingPriceColumnError,
     NoMatchingRunError,
+    NoModelOutputsError,
 )
 from returns.types import RETURNS_CSV_HEADER, SUMMARY_COLUMNS
 from tests.conftest import SETTINGS_YAML
@@ -262,3 +265,78 @@ def test_run_returns_files_only_returns_that_run(tmp_path: Path) -> None:
     keep = write_returns(tmp_path, 1, "Buy_Hold_2026-01-01_0000.csv", VALUES)
     write_returns(tmp_path, 1, "Buy_Hold_2026-02-01_0000.csv", VALUES)
     assert run_returns_files(tmp_path, "2026-01-01_0000") == [keep]
+
+
+def touch_summary(
+    out_dir: Path, model: str, stamp: str, with_json: bool = True
+) -> None:
+    (out_dir / f"summary_{model}_{stamp}.csv").touch()
+    if with_json:
+        (out_dir / f"total_returns_{model}_{stamp}.json").touch()
+
+
+RUN_STAMP = "2026-02-01_0000"
+
+
+def run_with(names: list[str], count: int | None = None) -> RunManifest:
+    return RunManifest(
+        timestamp=RUN_STAMP,
+        model_version=2,
+        dataset="qqq",
+        years=[1],
+        model_count=len(names) if count is None else count,
+        model_names=names if count is None else [],
+    )
+
+
+def test_run_summary_files_only_reads_the_run(tmp_path: Path) -> None:
+    for model in ("Buy_Hold", "Fractional_Kelly_0.2_90"):
+        touch_summary(tmp_path, model, RUN_STAMP)
+    # leftovers from other runs, including a model no longer in the grid
+    touch_summary(tmp_path, "Buy_Hold", "2026-03-01_0000")
+    touch_summary(tmp_path, "Insurance_0.1_0.15_90", "2026-01-01_0000")
+    (tmp_path / f"returns_1_Buy_Hold_{RUN_STAMP}.csv").touch()
+    files = run_summary_files(
+        tmp_path, run_with(["Buy_Hold", "Fractional_Kelly_0.2_90"])
+    )
+    assert sorted(files) == ["Buy_Hold", "Fractional_Kelly_0.2_90"]
+    summary, totals = files["Fractional_Kelly_0.2_90"]
+    assert summary.name == f"summary_Fractional_Kelly_0.2_90_{RUN_STAMP}.csv"
+    assert totals.name == f"total_returns_Fractional_Kelly_0.2_90_{RUN_STAMP}.json"
+
+
+def test_run_summary_files_without_summaries_raises(tmp_path: Path) -> None:
+    with pytest.raises(NoModelOutputsError, match="summarize"):
+        run_summary_files(tmp_path, run_with(["Buy_Hold"]))
+
+
+def test_run_summary_files_missing_json_raises(tmp_path: Path) -> None:
+    touch_summary(tmp_path, "Buy_Hold", RUN_STAMP, with_json=False)
+    with pytest.raises(IncompleteRunError, match="total_returns_Buy_Hold"):
+        run_summary_files(tmp_path, run_with(["Buy_Hold"]))
+
+
+def test_run_summary_files_checks_models_against_manifest(tmp_path: Path) -> None:
+    touch_summary(tmp_path, "Buy_Hold", RUN_STAMP)
+    touch_summary(tmp_path, "Mystery", RUN_STAMP)
+    with pytest.raises(
+        IncompleteRunError, match=r"missing \['Insurance_0.1_0.09_90'\]"
+    ):
+        run_summary_files(tmp_path, run_with(["Buy_Hold", "Insurance_0.1_0.09_90"]))
+
+
+def test_run_summary_files_old_manifest_checks_count(tmp_path: Path) -> None:
+    # manifests from before model_names existed only carry model_count
+    touch_summary(tmp_path, "Buy_Hold", RUN_STAMP)
+    assert list(run_summary_files(tmp_path, run_with([], count=1))) == ["Buy_Hold"]
+    with pytest.raises(IncompleteRunError, match="expected 2"):
+        run_summary_files(tmp_path, run_with([], count=2))
+
+
+def test_old_manifest_without_new_fields_still_loads(tmp_path: Path) -> None:
+    (tmp_path / "run_2026-01-01_0000.json").write_text(
+        '{"timestamp": "2026-01-01_0000", "model_version": 2, "dataset": "qqq",'
+        ' "years": [1], "model_count": 3}'
+    )
+    run = select_run(tmp_path, 2)
+    assert (run.model_names, run.parameters) == ([], {})

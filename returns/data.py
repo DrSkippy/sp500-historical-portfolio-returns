@@ -12,7 +12,6 @@ import pandas as pd
 from pydantic import BaseModel
 
 from returns.analysis import (
-    HISTOGRAM_BINS,
     get_aggregate_returns_by_period,
     get_df_aggregate_returns_by_period,
 )
@@ -272,7 +271,7 @@ def run_returns_files(out_dir: Path, timestamp: str) -> list[Path]:
 
 
 def get_model_run_outputs(
-    out_dir: Path, suffix: str, years: Iterable[int] = (1, 2, 3)
+    out_dir: Path, suffix: str, years: Iterable[int]
 ) -> tuple[dict[int, list[Row]], list[str] | None, Path]:
     """Read one model run's returns files for each window length.
 
@@ -312,7 +311,8 @@ def create_summary_file(
     results: dict[int, list[Row]],
     header: list[str] | None,
     filename: Path,
-    bins: int = HISTOGRAM_BINS,
+    *,
+    bins: int,
 ) -> tuple[Path, Path]:
     """Write a model run's summary CSV and total-returns JSON.
 
@@ -345,7 +345,8 @@ def create_summary_files(
     out_dir: Path,
     files: Iterable[Path],
     years: Iterable[int],
-    bins: int = HISTOGRAM_BINS,
+    *,
+    bins: int,
 ) -> list[tuple[Path, Path]]:
     """Summarize every model run found among the given returns files.
 

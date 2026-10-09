@@ -73,7 +73,14 @@ All calibration lives in `config.yaml`, validated by Pydantic models in `returns
 (unknown keys are errors; relative paths resolve against the config file's directory):
 `datasets`, `backtest` (stride, capital, year range, histogram bins), `models` (Kelly and
 Insurance grids and insurance parameters), `recent_returns`, `report`, `monthly_returns`,
-`sources`. Logging is configured from `logging.yaml` via `returns.logging_setup`.
+`sources` (incl. the Yahoo endpoint), `insurance_scan` (notebook scan grids). Logging is
+configured from `logging.yaml` via `returns.logging_setup`.
+
+**No calibration defaults in code.** Every config field is required, and model
+constructors, `model_tester`, `aggregate_returns`, `MonthlyReturns` etc. take their
+parameters explicitly — pass them from the loaded `AppConfig`. Tests use the pinned
+`SETTINGS_YAML` and the `make_buy_hold` / `make_kelly` / `make_insurance` factories in
+`tests/conftest.py`.
 
 ### Module layout
 

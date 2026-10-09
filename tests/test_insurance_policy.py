@@ -11,6 +11,7 @@ import pytest
 
 from returns.models import InsuranceModel
 from returns.types import PriceBar
+from tests.conftest import make_insurance
 
 START = datetime.datetime(2020, 1, 1)
 NO_INTEREST = 0.0
@@ -29,7 +30,7 @@ def make_model(**kwargs: float) -> InsuranceModel:
         "loss_window_days": 2,
     }
     params.update(kwargs)
-    m = InsuranceModel(**params)  # type: ignore[arg-type]
+    m = make_insurance(**params)
     m.model_config(START, years=2)
     m.first_trade(START, PriceBar(1000.0, NO_INTEREST))
     return m

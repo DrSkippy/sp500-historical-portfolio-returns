@@ -10,8 +10,6 @@ from matplotlib import pyplot as plt
 from returns.errors import EmptyReturnsError
 from returns.types import SUMMARY_COLUMNS, ReturnStats
 
-HISTOGRAM_BINS = 45
-
 FRAC_RETURN_COLUMN = 1
 YEARLY_RETURN_COLUMN = 2
 TIME_SPAN_COLUMN = 3
@@ -34,14 +32,15 @@ def calculate_mode(hist_data: tuple[npt.NDArray[Any], npt.NDArray[Any]]) -> floa
 
 
 def aggregate_returns(
-    returns_data: Sequence[Sequence[Any]], bins: int = HISTOGRAM_BINS
+    returns_data: Sequence[Sequence[Any]], bins: int
 ) -> tuple[ReturnStats, list[float]]:
     """Summarize all backtest windows of one length for one model.
 
     Args:
         returns_data: Rows of ``[date, frac_return, yearly_return_rate, time_span,
             model_name]``; numeric fields may be strings (as read from CSV).
-        bins: Number of histogram bins used to estimate the modes.
+        bins: Number of histogram bins used to estimate the modes
+            (``backtest.histogram_bins``).
 
     Returns:
         The aggregate statistics and the list of total (fractional) returns.
@@ -107,7 +106,7 @@ def format_metrics(return_stats: ReturnStats) -> str:
 
 
 def get_aggregate_returns_by_period(
-    data: Mapping[Any, Sequence[Sequence[Any]]], bins: int = HISTOGRAM_BINS
+    data: Mapping[Any, Sequence[Sequence[Any]]], bins: int
 ) -> tuple[list[ReturnStats], dict[Any, list[float]]]:
     """Aggregate each window length's returns.
 
@@ -153,9 +152,7 @@ def plot_df(
         ax.set_xlabel("Period (Years)")
 
 
-def plot_histograms(
-    total_returns_by_period: dict[Any, list[float]], bins: int = HISTOGRAM_BINS
-) -> None:
+def plot_histograms(total_returns_by_period: dict[Any, list[float]], bins: int) -> None:
     """Plot one histogram of total returns per window length."""
     fig, axs = plt.subplots(nrows=len(total_returns_by_period), ncols=1)
     fig.set_size_inches(8, 4 * len(total_returns_by_period))

@@ -133,13 +133,14 @@ def find_latest_files(out_data: Path) -> dict[str, tuple[Path, Path]]:
 
 
 def build_report_data(
-    file_map: dict[str, tuple[Path, Path]], dist_years: Iterable[int] = (1, 5, 10, 15)
+    file_map: dict[str, tuple[Path, Path]], dist_years: Iterable[int]
 ) -> dict[str, Any]:
     """Build the full report data structure.
 
     Args:
         file_map: Output of ``find_latest_files``.
-        dist_years: Window lengths whose full distributions are included.
+        dist_years: Window lengths whose full distributions are included
+            (``report.dist_years``).
 
     Returns:
         ``{"models": [...]}`` sorted by model name.

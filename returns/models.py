@@ -19,10 +19,6 @@ logger = logging.getLogger(__name__)
 MODEL_VERSION = 2
 
 DAYS_PER_YEAR = 365
-STRIDE_DAYS = 3  # stride for data sampling
-PADDING_TIME_DELTA = datetime.timedelta(
-    days=2 * STRIDE_DAYS
-)  # days to pad the jumps in the data
 
 BUY_HOLD_NAME = "Buy_Hold"
 KELLY_PREFIX = "Fractional_Kelly"
@@ -53,15 +49,20 @@ class Model:
 
     def __init__(
         self,
-        capital: float = 10000,
-        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
+        *,
+        capital: float,
+        skip_padding: datetime.timedelta,
     ) -> None:
         """Create an unconfigured model.
+
+        Calibration (capital, padding, strategy parameters) comes from config.yaml
+        via ``bin/runner.py``; there are no code defaults.
 
         Args:
             capital: Starting cash for every window.
             skip_padding: How far before a scheduled trade date to resume daily
-                processing when skipping ahead (must cover data gaps).
+                processing when skipping ahead (must cover data gaps; see
+                ``BacktestConfig.skip_padding``).
         """
         self.init_capital = capital
         self.skip_padding = skip_padding
@@ -249,10 +250,11 @@ class RebalancingModel(Model):
 
     def __init__(
         self,
-        capital: float = 10000,
-        stock_frac: float = 1.0,
-        rebalance_period_days: int = 90,
-        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
+        *,
+        capital: float,
+        stock_frac: float,
+        rebalance_period_days: int,
+        skip_padding: datetime.timedelta,
     ) -> None:
         """Create an unconfigured rebalancing model.
 
@@ -262,7 +264,7 @@ class RebalancingModel(Model):
             rebalance_period_days: Days between scheduled rebalances.
             skip_padding: See ``Model.__init__``.
         """
-        super().__init__(capital, skip_padding)
+        super().__init__(capital=capital, skip_padding=skip_padding)
         self.stock_frac = stock_frac
         self.rebalance_period = datetime.timedelta(days=rebalance_period_days)
         self.last_rebalance = self.start_date
@@ -314,10 +316,11 @@ class KellyModel(RebalancingModel):
 
     def __init__(
         self,
-        capital: float = 10000,
-        bond_frac: float = 0.4,
-        rebalance_period: int = 90,
-        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
+        *,
+        capital: float,
+        bond_frac: float,
+        rebalance_period: int,
+        skip_padding: datetime.timedelta,
     ) -> None:
         """Create an unconfigured Kelly model.
 
@@ -327,7 +330,12 @@ class KellyModel(RebalancingModel):
             rebalance_period: Days between rebalances.
             skip_padding: See ``Model.__init__``.
         """
-        super().__init__(capital, 1.0 - bond_frac, rebalance_period, skip_padding)
+        super().__init__(
+            capital=capital,
+            stock_frac=1.0 - bond_frac,
+            rebalance_period_days=rebalance_period,
+            skip_padding=skip_padding,
+        )
         self.init_bond_frac = bond_frac
         self.bond_frac = bond_frac
         self.init_rebalance_period_days = rebalance_period
@@ -376,14 +384,15 @@ class InsuranceModel(RebalancingModel):
 
     def __init__(
         self,
-        capital: float = 10000,
-        insurance_frac: float = 0.10,
-        insurance_period: int = 90,
-        premium_rate: float = 0.012,
-        insurance_deductible: float = 0.15,
-        coverage_ratio: float = 1.0,
-        loss_window_days: int = 6,
-        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
+        *,
+        capital: float,
+        insurance_frac: float,
+        insurance_period: int,
+        premium_rate: float,
+        insurance_deductible: float,
+        coverage_ratio: float,
+        loss_window_days: int,
+        skip_padding: datetime.timedelta,
     ) -> None:
         """Create an unconfigured insurance model.
 
@@ -401,7 +410,12 @@ class InsuranceModel(RebalancingModel):
             loss_window_days: Number of trading days over which losses are measured.
             skip_padding: See ``Model.__init__``.
         """
-        super().__init__(capital, 1 - insurance_frac, insurance_period, skip_padding)
+        super().__init__(
+            capital=capital,
+            stock_frac=1 - insurance_frac,
+            rebalance_period_days=insurance_period,
+            skip_padding=skip_padding,
+        )
         self.init_insurance_frac = insurance_frac
         self.init_insurance_period = insurance_period
         self.init_insurance_deductible = insurance_deductible

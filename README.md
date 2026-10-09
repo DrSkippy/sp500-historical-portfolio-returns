@@ -47,8 +47,9 @@ PostgreSQL cluster (`192.168.1.91:5434`, table `quotes`).
 
 Everything the backtest is calibrated with lives in `config.yaml`, validated at load time by
 Pydantic models in `returns/config.py`: unknown keys and bad values are errors, and relative
-paths resolve against the directory holding `config.yaml`. Secrets never go there — database
-credentials come from `.envrc`. Logging is configured in `logging.yaml`.
+paths resolve against the directory holding `config.yaml`. Every section and field is
+required: there are no calibration defaults in code to drift from the file. Secrets never go
+there — database credentials come from `.envrc`. Logging is configured in `logging.yaml`.
 
 | Section | Contents |
 |---|---|
@@ -58,7 +59,8 @@ credentials come from `.envrc`. Logging is configured in `logging.yaml`.
 | `recent_returns` | Daily / weekly / monthly horizons for the recent-returns page |
 | `report` | Report output directory and the holding periods whose full distributions are published |
 | `monthly_returns` | Settings for `get_monthly_returns.py` |
-| `sources` | Interest-rate file and the PostgreSQL quotes namespace |
+| `sources` | Interest-rate file, the PostgreSQL quotes namespace, and the Yahoo Finance endpoint for `download_qqq.py` |
+| `insurance_scan` | Horizons and grids for the scripts in `notebooks/insurance_scan/` |
 
 ### Datasets
 
@@ -348,7 +350,7 @@ and keeps `ins_frac` as a cash reserve that earns the market interest rate and p
 premium. Both are rebalanced back to target every `insurance_period` days.
 
 - **Premium**: `premium_rate` per year of the insured stock value, charged daily from cash
-  (default 1.2%/yr, i.e. $1/month per $1,000 insured).
+  (configured at 1.2%/yr, i.e. $1/month per $1,000 insured).
 - **Trigger**: the price falls by at least `insurance_deductible` (tested values: 9%, 12%, 18%)
   over a rolling 6-day window (`loss_window_days`).
 - **Payout**: the loss beyond the deductible on the insured stock, paid into cash:

@@ -14,8 +14,6 @@ from returns.monthly_returns import MonthlyReturns
 
 logger = logging.getLogger(__name__)
 
-SAMPLE_COUNT = 20
-
 
 def main() -> None:
     """Print sample returns and a summary, plot the distribution, write the CSV."""
@@ -35,7 +33,7 @@ def main() -> None:
         data, header, dataset.config.price_column, settings.offset_days
     )
 
-    for _ in range(SAMPLE_COUNT):
+    for _ in range(settings.sample_count):
         logger.info(monthly.sample())
     logger.info(monthly.summary())
     if not args.no_plot:

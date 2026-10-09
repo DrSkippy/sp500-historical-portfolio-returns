@@ -11,7 +11,7 @@ from returns.config import AppConfig
 from returns.data import RunManifest, find_runs, write_run_manifest
 from returns.errors import EmptyReturnsError
 from returns.models import MODEL_VERSION
-from tests.conftest import load_bin_module
+from tests.conftest import TEST_CAPITAL, TEST_SKIP_PADDING, load_bin_module
 
 runner = load_bin_module("runner")
 summarize = load_bin_module("summarize")
@@ -84,7 +84,12 @@ def test_all_model_specs_matches_original_grid(synthetic_config: AppConfig) -> N
 def test_worker_raises_when_data_too_short(synthetic_config: AppConfig) -> None:
     with pytest.raises(EmptyReturnsError, match="too short"):
         runner.model_test_worker(
-            10, "Model", {}, "2026-01-01_0000", "synthetic", synthetic_config
+            10,
+            "Model",
+            {"capital": TEST_CAPITAL, "skip_padding": TEST_SKIP_PADDING},
+            "2026-01-01_0000",
+            "synthetic",
+            synthetic_config,
         )
 
 

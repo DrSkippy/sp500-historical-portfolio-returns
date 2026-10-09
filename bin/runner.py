@@ -13,7 +13,7 @@ import multiprocessing as mp
 from pathlib import Path
 from typing import Any, Iterator
 
-from returns.config import AppConfig, BacktestConfig, load_config
+from returns.config import AppConfig, load_config
 from returns.data import (
     Row,
     RunManifest,
@@ -26,7 +26,6 @@ from returns.errors import EmptyReturnsError
 from returns.logging_setup import configure_logging
 from returns.models import (
     MODEL_VERSION,
-    STRIDE_DAYS,
     InsuranceModel,
     KellyModel,
     Model,
@@ -48,8 +47,9 @@ def model_tester(
     data: list[Row],
     price_index: int,
     interest_index: int,
-    years: int = 10,
-    stride_days: int = STRIDE_DAYS,
+    *,
+    years: int,
+    stride_days: int,
 ) -> list[WindowReturn]:
     """Backtest a model over every window of ``years`` length in the data.
 
@@ -105,16 +105,11 @@ def model_tester(
     return model_returns
 
 
-def skip_padding(backtest: BacktestConfig) -> datetime.timedelta:
-    """Skip-ahead padding implied by the backtest stride."""
-    return datetime.timedelta(days=backtest.padding_strides * backtest.stride_days)
-
-
 def all_model_specs(config: AppConfig) -> Iterator[tuple[str, dict[str, Any]]]:
     """Yield (class_name, kwargs) for every model variant in the configured grid."""
     common: dict[str, Any] = {
         "capital": config.backtest.initial_capital,
-        "skip_padding": skip_padding(config.backtest),
+        "skip_padding": config.backtest.skip_padding,
     }
     yield ("Model", common)
     kelly = config.models.kelly

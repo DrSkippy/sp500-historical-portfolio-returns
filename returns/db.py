@@ -46,7 +46,7 @@ def get_connection() -> psycopg.Connection[Any]:
 
 def get_quotes(
     symbol: str,
-    namespace: str = "NASDAQ",
+    namespace: str,
     connect: Callable[[], psycopg.Connection[Any]] = get_connection,
 ) -> list[tuple[datetime.date, float]]:
     """Query closing prices for a symbol from the quotes table, sorted ascending by date.

@@ -2,13 +2,13 @@ import unittest
 import datetime
 import math
 from returns.types import PriceBar
-from returns.models import Model
+from tests.conftest import make_buy_hold
 
 
 class TestModel(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.model = Model()
+        self.model = make_buy_hold()
         self.model.model_config(datetime.datetime(2020, 1, 1), years=2)
 
     def test_init(self) -> None:

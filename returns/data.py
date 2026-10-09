@@ -22,7 +22,7 @@ from returns.errors import (
     NoMatchingRunError,
     NoModelOutputsError,
 )
-from returns.types import SUMMARY_COLUMNS
+from returns.types import SUMMARY_COLUMNS, Row
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,6 @@ INTEREST_DATE_FORMAT = "%Y-%m-%d"
 PERCENT = 100.0
 INTEREST_RATE_COLUMN = 0
 """Index of the rate used by the models among the interest file's value columns."""
-
-Row = list[Any]
 
 
 @dataclass(frozen=True)

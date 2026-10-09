@@ -18,9 +18,10 @@ from typing import Any, Sequence
 import numpy as np
 
 from returns.config import AppConfig, RecentPeriodConfig, load_config
-from returns.data import Dataset, Row, get_price_data, load_dataset
+from returns.data import Dataset, get_price_data, load_dataset
 from returns.db import get_db_settings, get_quotes
 from returns.logging_setup import configure_logging
+from returns.types import Row
 
 logger = logging.getLogger(__name__)
 

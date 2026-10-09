@@ -252,7 +252,8 @@ S&P 500 price-index methodology; set `price_column: "Adj Close**"` to include di
 ```
 sp500-historical-portfolio-returns/
 ├── returns/
-│   ├── models.py              # Model, KellyModel, InsuranceModel
+│   ├── models.py              # BuyHoldModel, KellyModel, InsuranceModel (+ InsurancePolicy)
+│   ├── backtest.py            # Typed model specs, the configured grid, model_tester
 │   ├── types.py               # PriceBar, Trade, WindowReturn, ReturnStats records
 │   ├── config.py              # Pydantic schema + loader for config.yaml
 │   ├── errors.py              # Package exceptions
@@ -287,7 +288,7 @@ sp500-historical-portfolio-returns/
 │   ├── test_db.py
 │   ├── test_download_qqq.py
 │   ├── test_monthly_returns.py
-│   └── test_runner.py         # model_tester early exit vs full scan
+│   └── test_backtest.py       # model_tester early exit vs full scan; model specs
 ├── data/
 │   ├── SP500.tab              # Daily OHLCV + Adj Close (Aug 1956 – Mar 2026)
 │   ├── QQQ.tab                # QQQ daily OHLCV, same layout (Mar 1999 – )

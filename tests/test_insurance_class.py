@@ -1,5 +1,6 @@
 import unittest
 import datetime
+from collections import deque
 
 from returns.types import PriceBar
 from tests.conftest import make_insurance
@@ -13,11 +14,11 @@ class TestInsuranceModel(unittest.TestCase):
 
     def test_init(self) -> None:
         self.assertEqual(self.insurance_model.init_capital, 10000)
-        self.assertEqual(self.insurance_model.init_insurance_frac, 0.10)
-        self.assertEqual(self.insurance_model.init_insurance_period, 90)
-        self.assertEqual(self.insurance_model.premium_rate, 0.012)
-        self.assertEqual(self.insurance_model.coverage_ratio, 1.0)
-        self.assertEqual(self.insurance_model.init_insurance_deductible, 0.15)
+        self.assertEqual(self.insurance_model.insurance_frac, 0.10)
+        self.assertEqual(self.insurance_model.policy.period_days, 90)
+        self.assertEqual(self.insurance_model.policy.premium_rate, 0.012)
+        self.assertEqual(self.insurance_model.policy.coverage_ratio, 1.0)
+        self.assertEqual(self.insurance_model.insurance_deductible, 0.15)
         self.assertEqual(self.insurance_model.model_name, "Insurance_0.1_0.15_90")
         self.assertEqual(self.insurance_model.stock_frac, 0.90)
 
@@ -43,7 +44,7 @@ class TestInsuranceModel(unittest.TestCase):
         self.insurance_model.shares = 900
         self.insurance_model.capital = 10000
         self.insurance_model.last_rebalance = datetime.datetime(2020, 1, 1)
-        self.insurance_model.last_price = [100, 100, 100]  # only 3 days of history
+        self.insurance_model.loss_window = deque([100, 100, 100])  # only 3 days
         date = datetime.datetime(2020, 1, 10)
         price = PriceBar(100, -0.10)  # interest rate should be irrelevant here!
         self.insurance_model.daily_trade(date, price)
@@ -56,20 +57,15 @@ class TestInsuranceModel(unittest.TestCase):
         self.assertEqual(
             self.insurance_model.last_rebalance, datetime.datetime(2020, 1, 1)
         )
-        self.assertListEqual(self.insurance_model.last_price, [100, 100, 100, 100])
+        self.assertListEqual(list(self.insurance_model.loss_window), [100] * 4)
 
     def test_daily_trade_with_insurance_payout(self) -> None:
         self.insurance_model.shares = 900
         self.insurance_model.capital = 10000
         self.insurance_model.last_rebalance = datetime.datetime(2020, 1, 1)
-        self.insurance_model.last_price = [
-            100,
-            100,
-            100,
-            95,
-            90,
-            88,
-        ]  # only 6 days of history, 15% drop
+        self.insurance_model.loss_window = deque(
+            [100, 100, 100, 95, 90, 88]
+        )  # only 6 days of history, 15% drop
         date = datetime.datetime(2020, 1, 10)
         price = PriceBar(84, 0.04)
         self.insurance_model.daily_trade(date, price)
@@ -88,14 +84,14 @@ class TestInsuranceModel(unittest.TestCase):
         self.assertEqual(
             self.insurance_model.last_rebalance, datetime.datetime(2020, 1, 10)
         )
-        self.assertListEqual(self.insurance_model.last_price, [84])
+        self.assertListEqual(list(self.insurance_model.loss_window), [84])
         self.assertFalse(self.insurance_model.policy_active)
 
     def test_daily_trade_without_insurance_payout(self) -> None:
         self.insurance_model.shares = 900
         self.insurance_model.capital = 10000
         self.insurance_model.last_rebalance = datetime.datetime(2020, 1, 1)
-        self.insurance_model.last_price = [100, 100, 100, 100, 100, 100]
+        self.insurance_model.loss_window = deque([100, 100, 100, 100, 100, 100])
         date = datetime.datetime(2020, 1, 4)  # 3 days < 90-day rebalance period
         price = PriceBar(99, -0.005)  # 1% loss, below 15% deductible
         self.insurance_model.daily_trade(date, price)
@@ -109,7 +105,7 @@ class TestInsuranceModel(unittest.TestCase):
             self.insurance_model.last_rebalance, datetime.datetime(2020, 1, 1)
         )
         self.assertListEqual(
-            self.insurance_model.last_price, [100, 100, 100, 100, 100, 99]
+            list(self.insurance_model.loss_window), [100, 100, 100, 100, 100, 99]
         )
 
 

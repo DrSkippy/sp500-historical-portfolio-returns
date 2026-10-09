@@ -20,7 +20,7 @@ def test_buy_hold_name() -> None:
 
 @pytest.mark.parametrize("bond_frac,days", [(0.1, 90), (0.25, 180), (0.15, 90)])
 def test_kelly_name_round_trips(bond_frac: float, days: int) -> None:
-    model = make_kelly(bond_frac=bond_frac, rebalance_period=days)
+    model = make_kelly(bond_frac=bond_frac, rebalance_days=days)
     model.model_config(datetime.datetime(2020, 1, 1))
     assert model.model_name == format_kelly_name(bond_frac, days)
     assert parse_model_name(model.model_name) == (
@@ -80,7 +80,7 @@ def test_family_serializes_as_report_string() -> None:
 
 
 def test_model_name_does_not_accumulate_across_windows() -> None:
-    model = make_kelly(bond_frac=0.2, rebalance_period=90)
+    model = make_kelly(bond_frac=0.2, rebalance_days=90)
     for day in range(1, 4):
         model.model_config(datetime.datetime(2020, 1, day))
     assert model.model_name == "Fractional_Kelly_0.2_90"

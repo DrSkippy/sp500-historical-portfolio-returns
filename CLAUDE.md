@@ -68,9 +68,10 @@ only `gh-pages` carries them.
 - **Bisect for sorted data:** the daily price list is sorted by date. Use `bisect.bisect_left`
   to jump to the start of each test window instead of a linear scan with `continue`. Pre-compute
   `dates = [d[0] for d in data]` once outside the while loop.
-- When adding new strategies, register the class in `MODEL_CLASSES` and add its variants to
-  `all_model_specs()` in `runner.py` (grid values come from `models:` in `config.yaml`) — the
-  parallelism scales automatically.
+- When adding new strategies, add a model class (a `PortfolioModel` subclass) and a frozen
+  `*Spec` dataclass with a `build()` method in `returns/backtest.py`, add it to the
+  `ModelSpec` union and yield its variants from `all_model_specs()` (grid values come from
+  `models:` in `config.yaml`) — the parallelism scales automatically.
 
 ### Configuration
 
@@ -91,7 +92,10 @@ parameters explicitly — pass them from the loaded `AppConfig`. Tests use the p
 
 ```
 returns/
-  models.py          # Model, RebalancingModel, KellyModel, InsuranceModel; model-name format/parse
+  models.py          # PortfolioModel (abstract), BuyHoldModel, RebalancingModel, KellyModel,
+                     #   InsuranceModel + InsurancePolicy; model-name format/parse, ModelFamily
+  backtest.py        # ModelSpec (BuyHoldSpec/KellySpec/InsuranceSpec), all_model_specs,
+                     #   unique_model_names, build_model, model_tester
   types.py           # PriceBar, Trade, WindowReturn, ReturnStats (NamedTuples; CSV headers)
   config.py          # Pydantic AppConfig + load_config (config.yaml)
   errors.py          # ReturnsError and subclasses
@@ -101,7 +105,7 @@ returns/
   monthly_returns.py # MonthlyReturns (30-day rolling returns, formula: (cur-prior)/cur)
   logging_setup.py   # configure_logging from logging.yaml
 bin/
-  runner.py                  # Backtest entry point; model_tester, model_test_worker, all_model_specs
+  runner.py                  # Backtest entry point: model_test_worker over all_model_specs x years
   summarize.py               # Aggregate backtest CSVs into summary_*.csv / total_returns_*.json
   generate_report.py         # Build trading_strategies_report/data/report_data*.json
   generate_recent_returns.py # Build recent_returns_data*.json (SPY from PostgreSQL, QQQ from file)

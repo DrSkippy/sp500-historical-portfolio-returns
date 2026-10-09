@@ -7,11 +7,12 @@ from typing import Any, Callable, Iterable
 
 import pytest
 
+from returns.backtest import BuyHoldSpec
 from returns.config import AppConfig
 from returns.data import RunManifest, find_runs, write_run_manifest
-from returns.errors import DuplicateModelNameError, EmptyReturnsError
+from returns.errors import EmptyReturnsError
 from returns.models import MODEL_VERSION
-from tests.conftest import TEST_CAPITAL, TEST_SKIP_PADDING, load_bin_module
+from tests.conftest import load_bin_module
 
 runner = load_bin_module("runner")
 summarize = load_bin_module("summarize")
@@ -67,48 +68,10 @@ def shrink_grid(config: AppConfig) -> AppConfig:
     return config.model_copy(update={"models": models, "backtest": backtest})
 
 
-def test_all_model_specs_matches_original_grid(synthetic_config: AppConfig) -> None:
-    specs = list(runner.all_model_specs(synthetic_config))
-    assert len(specs) == 15
-    assert [name for name, _ in specs] == ["Model"] + ["KellyModel"] * 8 + [
-        "InsuranceModel"
-    ] * 6
-    assert specs[1][1]["bond_frac"] == 0.1 and specs[1][1]["rebalance_period"] == 90
-    assert specs[-1][1]["insurance_frac"] == 0.1
-    assert specs[-1][1]["insurance_deductible"] == 0.18
-    for name, kwargs in specs:
-        model = runner.MODEL_CLASSES[name](**kwargs)
-        assert model.init_capital == 10000
-
-
-def test_unique_model_names_accepts_the_grid(synthetic_config: AppConfig) -> None:
-    names = runner.unique_model_names(list(runner.all_model_specs(synthetic_config)))
-    assert len(names) == len(set(names)) == 15
-    assert names[0] == "Buy_Hold" and names[-1] == "Insurance_0.1_0.18_90"
-
-
-def test_unique_model_names_rejects_repeated_grid_values(
-    synthetic_config: AppConfig,
-) -> None:
-    kelly = synthetic_config.models.kelly.model_copy(
-        update={"bond_fracs": [0.2, 0.2], "rebalance_days": [90]}
-    )
-    config = synthetic_config.model_copy(
-        update={"models": synthetic_config.models.model_copy(update={"kelly": kelly})}
-    )
-    with pytest.raises(DuplicateModelNameError, match="Fractional_Kelly_0.2_90"):
-        runner.unique_model_names(list(runner.all_model_specs(config)))
-
-
 def test_worker_raises_when_data_too_short(synthetic_config: AppConfig) -> None:
     with pytest.raises(EmptyReturnsError, match="too short"):
         runner.model_test_worker(
-            10,
-            "Model",
-            {"capital": TEST_CAPITAL, "skip_padding": TEST_SKIP_PADDING},
-            "2026-01-01_0000",
-            "synthetic",
-            synthetic_config,
+            10, BuyHoldSpec(), "2026-01-01_0000", "synthetic", synthetic_config
         )
 
 

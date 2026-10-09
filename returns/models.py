@@ -7,6 +7,9 @@ fed one ``PriceBar`` per trading day through ``trade``.
 import datetime
 import logging
 import math
+from abc import ABC, abstractmethod
+from collections import deque
+from dataclasses import dataclass
 from enum import StrEnum
 
 from returns.errors import ModelNameError
@@ -48,8 +51,11 @@ def days_to_years(days: int) -> float:
     return days / DAYS_PER_YEAR
 
 
-class Model:
-    """Buy & Hold: buy with all capital on the first day, sell on the last.
+class PortfolioModel(ABC):
+    """Base for every strategy: cash plus shares, traded over one window at a time.
+
+    Subclasses define ``_build_model_name`` (their parameters) and ``daily_trade``
+    (what happens between the first and last trade of a window).
 
     Attributes:
         stock_frac: Fraction of total capital held in stock.
@@ -66,7 +72,7 @@ class Model:
         """Create an unconfigured model.
 
         Calibration (capital, padding, strategy parameters) comes from config.yaml
-        via ``bin/runner.py``; there are no code defaults.
+        via ``returns.backtest`` (``build_model``); there are no code defaults.
 
         Args:
             capital: Starting cash for every window.
@@ -94,9 +100,9 @@ class Model:
         """
         return self._build_model_name()
 
+    @abstractmethod
     def _build_model_name(self) -> str:
-        """Return the name for this model's parameters (constant for Buy & Hold)."""
-        return BUY_HOLD_NAME
+        """Return the name for this model's parameters (see ``format_*_name``)."""
 
     def model_config(self, start_date: datetime.datetime, years: int = 1) -> None:
         """Reset all state for a new backtest window.
@@ -145,18 +151,15 @@ class Model:
         self.shares = 0
         self._record_trade(date, price, delta_shares)
 
+    @abstractmethod
     def daily_trade(
         self, date: datetime.datetime, price: PriceBar
     ) -> datetime.datetime | None:
         """Handle a day inside the window (not the first or last trade).
 
-        Buy & Hold never trades mid-window, so it asks to skip to just before the
-        window ends.
-
         Returns:
             Date to skip ahead to, or None to keep processing every day.
         """
-        return self._skip_to(self.end_date - self.skip_padding, date)
 
     @staticmethod
     def _skip_to(
@@ -262,7 +265,28 @@ class Model:
         )
 
 
-class RebalancingModel(Model):
+class BuyHoldModel(PortfolioModel):
+    """Buy & Hold: buy with all capital on the first day, sell on the last."""
+
+    def _build_model_name(self) -> str:
+        """Return the name for this model's parameters (constant for Buy & Hold)."""
+        return BUY_HOLD_NAME
+
+    def daily_trade(
+        self, date: datetime.datetime, price: PriceBar
+    ) -> datetime.datetime | None:
+        """Handle a day inside the window (not the first or last trade).
+
+        Buy & Hold never trades mid-window, so it asks to skip to just before the
+        window ends.
+
+        Returns:
+            Date to skip ahead to, or None to keep processing every day.
+        """
+        return self._skip_to(self.end_date - self.skip_padding, date)
+
+
+class RebalancingModel(PortfolioModel):
     """Holds ``stock_frac`` in stock and the rest in interest-bearing cash, and
     rebalances back to that split periodically.
     """
@@ -281,7 +305,7 @@ class RebalancingModel(Model):
             capital: Starting cash for every window.
             stock_frac: Target fraction of total capital held in stock.
             rebalance_period_days: Days between scheduled rebalances.
-            skip_padding: See ``Model.__init__``.
+            skip_padding: See ``PortfolioModel.__init__``.
         """
         super().__init__(capital=capital, skip_padding=skip_padding)
         self.stock_frac = stock_frac
@@ -336,7 +360,7 @@ class KellyModel(RebalancingModel):
         *,
         capital: float,
         bond_frac: float,
-        rebalance_period: int,
+        rebalance_days: int,
         skip_padding: datetime.timedelta,
     ) -> None:
         """Create an unconfigured Kelly model.
@@ -344,24 +368,22 @@ class KellyModel(RebalancingModel):
         Args:
             capital: Starting cash for every window.
             bond_frac: Fraction of capital held as interest-bearing cash.
-            rebalance_period: Days between rebalances.
-            skip_padding: See ``Model.__init__``.
+            rebalance_days: Days between rebalances.
+            skip_padding: See ``PortfolioModel.__init__``.
         """
         super().__init__(
             capital=capital,
             stock_frac=1.0 - bond_frac,
-            rebalance_period_days=rebalance_period,
+            rebalance_period_days=rebalance_days,
             skip_padding=skip_padding,
         )
-        self.init_bond_frac = bond_frac
         self.bond_frac = bond_frac
-        self.init_rebalance_period_days = rebalance_period
+        self.rebalance_days = rebalance_days
 
     def _build_model_name(self) -> str:
-        return format_kelly_name(self.init_bond_frac, self.init_rebalance_period_days)
+        return format_kelly_name(self.bond_frac, self.rebalance_days)
 
     def _configure(self) -> None:
-        self.bond_frac = self.init_bond_frac
         self.stock_frac = 1.0 - self.bond_frac
         logger.info(f"Model configured with bond fraction = {self.bond_frac}")
         super()._configure()
@@ -377,6 +399,25 @@ class KellyModel(RebalancingModel):
         # skip forward to next rebalance period
         next_event = min(self.last_rebalance + self.rebalance_period, self.end_date)
         return self._skip_to(next_event - self.skip_padding, date)
+
+
+@dataclass(frozen=True)
+class InsurancePolicy:
+    """Terms shared by every insurance variant in a run (``models.insurance``).
+
+    Attributes:
+        period_days: Days between scheduled rebalances (the policy period).
+        premium_rate: Annual premium as a fraction of the insured stock value
+            (0.012 = 1.2%/yr, i.e. $1/month on $1000).
+        coverage_ratio: Fraction of the loss beyond the deductible that the
+            policy pays (1.0 = all of it).
+        loss_window_days: Number of trading days over which losses are measured.
+    """
+
+    period_days: int
+    premium_rate: float
+    coverage_ratio: float
+    loss_window_days: int
 
 
 class InsuranceModel(RebalancingModel):
@@ -402,11 +443,8 @@ class InsuranceModel(RebalancingModel):
         *,
         capital: float,
         insurance_frac: float,
-        insurance_period: int,
-        premium_rate: float,
         insurance_deductible: float,
-        coverage_ratio: float,
-        loss_window_days: int,
+        policy: InsurancePolicy,
         skip_padding: datetime.timedelta,
     ) -> None:
         """Create an unconfigured insurance model.
@@ -415,62 +453,55 @@ class InsuranceModel(RebalancingModel):
             capital: Starting cash for every window.
             insurance_frac: Fraction of capital kept as the cash reserve that pays
                 premiums (the rest is the insured stock).
-            insurance_period: Days between scheduled rebalances (policy period).
-            premium_rate: Annual premium as a fraction of the insured stock value
-                (0.012 = 1.2%/yr, i.e. $1/month on $1000).
             insurance_deductible: Loss fraction over the loss window that
                 triggers a payout; the policy pays only the loss beyond it.
-            coverage_ratio: Fraction of the loss beyond the deductible that the
-                policy pays (1.0 = all of it).
-            loss_window_days: Number of trading days over which losses are measured.
-            skip_padding: See ``Model.__init__``.
+            policy: Period, premium, coverage and loss window.
+            skip_padding: See ``PortfolioModel.__init__``.
         """
         super().__init__(
             capital=capital,
             stock_frac=1 - insurance_frac,
-            rebalance_period_days=insurance_period,
+            rebalance_period_days=policy.period_days,
             skip_padding=skip_padding,
         )
-        self.init_insurance_frac = insurance_frac
-        self.init_insurance_period = insurance_period
-        self.init_insurance_deductible = insurance_deductible
-        self.premium_rate = premium_rate
-        self.coverage_ratio = coverage_ratio
-        self.losses_days = loss_window_days
         self.insurance_frac = insurance_frac
         self.insurance_deductible = insurance_deductible
-        self.last_price: list[float] = []  # list of prices for losses days
+        self.policy = policy
+        # prices over the last loss_window_days trading days, oldest first
+        self.loss_window: deque[float] = deque()
         self.policy_active = True
         self.last_premium_date = self.start_date
 
     def _build_model_name(self) -> str:
         return format_insurance_name(
-            self.init_insurance_frac,
-            self.init_insurance_deductible,
-            self.init_insurance_period,
+            self.insurance_frac,
+            self.insurance_deductible,
+            self.policy.period_days,
         )
 
     def _configure(self) -> None:
-        self.insurance_frac = self.init_insurance_frac
         self.stock_frac = 1 - self.insurance_frac
-        self.insurance_deductible = self.init_insurance_deductible
-        self.last_price = []
+        self.loss_window = deque()
         self.policy_active = True
         self.last_premium_date = self.start_date
         logger.info(f"Model configured with insurance fraction = {self.insurance_frac}")
-        logger.info(f"Model configured with premium rate = {self.premium_rate}")
+        logger.info(f"Model configured with premium rate = {self.policy.premium_rate}")
         logger.info(
             f"Model configured with insurance deductible = {self.insurance_deductible}"
         )
         super()._configure()
-        logger.info(f"Model configured with coverage ratio = {self.coverage_ratio}")
+        logger.info(
+            f"Model configured with coverage ratio = {self.policy.coverage_ratio}"
+        )
 
     def _charge_premium(self, date: datetime.datetime, price: PriceBar) -> None:
         """Deduct the premium on the insured stock since the last charge from cash."""
         days = (date - self.last_premium_date).days
         if days > 0:
             insured_value = self.shares * price.price
-            self.capital -= self.premium_rate * insured_value * days_to_years(days)
+            self.capital -= (
+                self.policy.premium_rate * insured_value * days_to_years(days)
+            )
         self.last_premium_date = date
 
     def first_trade(self, date: datetime.datetime, price: PriceBar) -> None:
@@ -483,21 +514,44 @@ class InsuranceModel(RebalancingModel):
         self._charge_premium(date, price)
         super().last_trade(date, price)
 
-    def _loss_triggered(self, price: PriceBar) -> tuple[float, float] | None:
+    def is_covered_loss(self, loss_frac: float) -> bool:
+        """Whether a loss over the window qualifies for a payout right now.
+
+        Args:
+            loss_frac: Price change over the loss window (negative for a loss).
+        """
+        return self.policy_active and loss_frac <= -self.insurance_deductible
+
+    def payout_amount(self, loss_frac: float, start_price: float) -> float:
+        """The payout for a covered loss: the loss beyond the deductible on the
+        insured stock, valued at the start of the loss window, times coverage.
+
+        Args:
+            loss_frac: Price change over the loss window (negative).
+            start_price: Price at the start of the loss window.
+        """
+        insured_value = self.shares * start_price
+        return (
+            self.policy.coverage_ratio
+            * insured_value
+            * (-loss_frac - self.insurance_deductible)
+        )
+
+    def _loss_claim(self, price: PriceBar) -> tuple[float, float] | None:
         """Slide the loss window forward one day.
 
         Returns:
             ``(loss_frac, start_price)`` if the loss reaches the deductible while
             the policy is active, else None.
         """
-        if len(self.last_price) < self.losses_days:
+        if len(self.loss_window) < self.policy.loss_window_days:
             # Not enough history to judge loss for payoff
-            self.last_price.append(price.price)
+            self.loss_window.append(price.price)
             return None
-        start_price = self.last_price.pop(0)
+        start_price = self.loss_window.popleft()
         loss_frac = (price.price - start_price) / start_price
-        if not self.policy_active or loss_frac > -self.insurance_deductible:
-            self.last_price.append(price.price)
+        if not self.is_covered_loss(loss_frac):
+            self.loss_window.append(price.price)
             return None
         return loss_frac, start_price
 
@@ -515,21 +569,17 @@ class InsuranceModel(RebalancingModel):
         """
         self._accrue_interest(date, price.interest_rate)
         self.last_rebalance = date
-        insured_value = self.shares * start_price
-        payout = (
-            self.coverage_ratio
-            * insured_value
-            * (-loss_frac - self.insurance_deductible)
-        )
+        payout = self.payout_amount(loss_frac, start_price)
         self.capital += payout
         self.policy_active = False
         self._record_trade(date, price, 0)
-        self.last_price = [price.price]  # starting over
+        self.loss_window = deque([price.price])  # starting over
         logger.info(
-            f"Insurance payout on {date} of {payout} on insured {insured_value}"
+            f"Insurance payout on {date} of {payout} on insured {self.shares * start_price}"
         )
         logger.info(
-            f"Triggered by loss of {loss_frac} based on {self.losses_days} days of history"
+            f"Triggered by loss of {loss_frac} based on "
+            f"{self.policy.loss_window_days} days of history"
         )
 
     def daily_trade(
@@ -545,10 +595,10 @@ class InsuranceModel(RebalancingModel):
         if scheduled:
             self.policy_active = True  # renew the policy
         # Loss insurance triggered?
-        trigger = self._loss_triggered(price)
-        if trigger is not None:
-            self._pay_out(date, price, *trigger)
-        if scheduled or trigger is not None:
+        claim = self._loss_claim(price)
+        if claim is not None:
+            self._pay_out(date, price, *claim)
+        if scheduled or claim is not None:
             self.rebalance(date, price)
             self.last_rebalance = date
         return None

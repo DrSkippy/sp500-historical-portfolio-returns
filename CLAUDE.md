@@ -44,9 +44,12 @@ only `gh-pages` carries them.
   - `calculate_mode` (`analysis.py`): `np.histogram` returns bin *edges* (one more than the
     counts); bin `i` spans `edges[i]..edges[i+1]`. The mode is that bin's centre. (Before
     2026-10-07 it used `edges[i-1]`, one bin low and wrapping at `i == 0`.)
-  - `model_name` mutation: `model_config()` must assign (`=`), never append (`+=`), or the
-    name accumulates across the ~5,800 calls made per full backtest run. Names are written to
-    output files and parsed back by `parse_model_name`; keep `format_*_name` and it in sync.
+  - Model names: `model_name` is a read-only property derived from the constructor
+    parameters (it once accumulated across the ~5,800 `model_config()` calls per run when a
+    `+=` crept in). Names are written to output files and parsed back by `parse_model_name`
+    (which raises `ModelNameError` on anything it can't parse); keep `format_*_name` and it
+    in sync. Floats are formatted losslessly (`repr`), and `runner.unique_model_names`
+    refuses a grid whose variants would share a name (and overwrite each other's files).
   - `InsuranceModel` insures the **stock, not the cash**: payout = `coverage_ratio ×
     insured_value × (|loss| − deductible)` into cash; premium = `premium_rate` × insured stock
     value per year, charged daily; at most one payout per policy period. Worked example

@@ -1,8 +1,11 @@
 import datetime
+import json
 
 import pytest
 
+from returns.errors import ModelNameError
 from returns.models import (
+    ModelFamily,
     format_insurance_name,
     format_kelly_name,
     parse_model_name,
@@ -37,8 +40,43 @@ def test_insurance_name_round_trips(frac: float, deductible: float) -> None:
     )
 
 
-def test_unknown_name() -> None:
-    assert parse_model_name("Mystery_1") == ("unknown", {})
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Mystery_1",
+        "Fractional_Kelly_0.2",  # missing rebalance
+        "Fractional_Kelly_0.2_90_extra",
+        "Fractional_Kelly_x_90",
+        "Insurance_0.1_0.15",
+        "Insurance_0.1_0.15_ninety",
+        "",
+    ],
+)
+def test_unparseable_names_raise(name: str) -> None:
+    with pytest.raises(ModelNameError):
+        parse_model_name(name)
+
+
+def test_names_are_lossless() -> None:
+    # a fixed 2-significant-digit format made these collide ("0.12")
+    assert format_kelly_name(0.125, 90) != format_kelly_name(0.12, 90)
+    assert format_insurance_name(0.05, 0.125, 90) == "Insurance_0.05_0.125_90"
+    for frac in (0.125, 0.075, 1 / 3):
+        _, params = parse_model_name(format_kelly_name(frac, 180))
+        assert params["bond_frac"] == frac
+
+
+def test_current_grid_names_are_unchanged() -> None:
+    # existing output file names (and the report) keep their spelling
+    assert format_kelly_name(0.1, 90) == "Fractional_Kelly_0.1_90"
+    assert format_kelly_name(0.25, 180) == "Fractional_Kelly_0.25_180"
+    assert format_insurance_name(0.05, 0.09, 90) == "Insurance_0.05_0.09_90"
+
+
+def test_family_serializes_as_report_string() -> None:
+    family, _ = parse_model_name("Buy_Hold")
+    assert family is ModelFamily.BUY_HOLD
+    assert json.dumps({"family": family}) == '{"family": "buy_hold"}'
 
 
 def test_model_name_does_not_accumulate_across_windows() -> None:

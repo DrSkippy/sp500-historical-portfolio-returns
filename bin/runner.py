@@ -10,6 +10,7 @@ import csv
 import datetime
 import logging
 import multiprocessing as mp
+from collections import Counter
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -22,7 +23,7 @@ from returns.data import (
     returns_file_path,
     write_run_manifest,
 )
-from returns.errors import EmptyReturnsError
+from returns.errors import DuplicateModelNameError, EmptyReturnsError
 from returns.logging_setup import configure_logging
 from returns.models import (
     MODEL_VERSION,
@@ -136,6 +137,33 @@ def all_model_specs(config: AppConfig) -> Iterator[tuple[str, dict[str, Any]]]:
             )
 
 
+def unique_model_names(specs: list[tuple[str, dict[str, Any]]]) -> list[str]:
+    """Names of the model variants, checked to be distinct.
+
+    Output file names are built from model names, so two variants with the same
+    name would overwrite each other's results in the parallel run.
+
+    Args:
+        specs: ``(class_name, kwargs)`` pairs from ``all_model_specs``.
+
+    Returns:
+        One name per spec, in order.
+
+    Raises:
+        DuplicateModelNameError: If any two specs produce the same name.
+    """
+    names = [
+        MODEL_CLASSES[class_name](**kwargs).model_name for class_name, kwargs in specs
+    ]
+    duplicates = sorted(name for name, count in Counter(names).items() if count > 1)
+    if duplicates:
+        raise DuplicateModelNameError(
+            f"Model variants share names {duplicates}; check the models grid in "
+            "config.yaml for repeated values"
+        )
+    return names
+
+
 def write_returns_csv(path: Path, rows: list[WindowReturn]) -> None:
     """Write window results with the standard returns header."""
     with path.open("w") as outfile:
@@ -201,6 +229,7 @@ def main() -> None:
     dataset.config.out_dir.mkdir(parents=True, exist_ok=True)
     date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
     specs = list(all_model_specs(config))
+    unique_model_names(specs)
     write_run_manifest(
         dataset.config.out_dir,
         RunManifest(

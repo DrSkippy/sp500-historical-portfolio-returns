@@ -9,7 +9,7 @@ import pytest
 
 from returns.config import AppConfig
 from returns.data import RunManifest, find_runs, write_run_manifest
-from returns.errors import EmptyReturnsError
+from returns.errors import DuplicateModelNameError, EmptyReturnsError
 from returns.models import MODEL_VERSION
 from tests.conftest import TEST_CAPITAL, TEST_SKIP_PADDING, load_bin_module
 
@@ -79,6 +79,25 @@ def test_all_model_specs_matches_original_grid(synthetic_config: AppConfig) -> N
     for name, kwargs in specs:
         model = runner.MODEL_CLASSES[name](**kwargs)
         assert model.init_capital == 10000
+
+
+def test_unique_model_names_accepts_the_grid(synthetic_config: AppConfig) -> None:
+    names = runner.unique_model_names(list(runner.all_model_specs(synthetic_config)))
+    assert len(names) == len(set(names)) == 15
+    assert names[0] == "Buy_Hold" and names[-1] == "Insurance_0.1_0.18_90"
+
+
+def test_unique_model_names_rejects_repeated_grid_values(
+    synthetic_config: AppConfig,
+) -> None:
+    kelly = synthetic_config.models.kelly.model_copy(
+        update={"bond_fracs": [0.2, 0.2], "rebalance_days": [90]}
+    )
+    config = synthetic_config.model_copy(
+        update={"models": synthetic_config.models.model_copy(update={"kelly": kelly})}
+    )
+    with pytest.raises(DuplicateModelNameError, match="Fractional_Kelly_0.2_90"):
+        runner.unique_model_names(list(runner.all_model_specs(config)))
 
 
 def test_worker_raises_when_data_too_short(synthetic_config: AppConfig) -> None:

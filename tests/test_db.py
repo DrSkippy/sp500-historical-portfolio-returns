@@ -86,7 +86,9 @@ class FakeConnection:
 
 def test_get_quotes_parameterized_and_converts_decimal() -> None:
     conn = FakeConnection([(datetime.date(2026, 10, 1), Decimal("660.123456"))])
-    rows = get_quotes("SPY", connect=lambda: cast(psycopg.Connection[Any], conn))
+    rows = get_quotes(
+        "SPY", "NASDAQ", connect=lambda: cast(psycopg.Connection[Any], conn)
+    )
     assert len(rows) == 1
     assert rows[0][0] == datetime.date(2026, 10, 1)
     assert rows[0][1] == pytest.approx(660.123456)

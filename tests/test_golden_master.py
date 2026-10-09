@@ -18,12 +18,21 @@ import pytest
 
 from returns.config import load_config
 from returns.data import (
+    RunManifest,
     create_summary_file,
     get_model_run_outputs,
     load_dataset,
     returns_file_suffix,
+    run_summary_files,
 )
-from tests.conftest import load_bin_module, write_synthetic_project
+from returns.models import MODEL_VERSION
+from tests.conftest import (
+    INSURANCE_PARAMS,
+    TEST_CAPITAL,
+    TEST_SKIP_PADDING,
+    load_bin_module,
+    write_synthetic_project,
+)
 
 runner = load_bin_module("runner")
 generate_report = load_bin_module("generate_report")
@@ -32,11 +41,22 @@ generate_recent_returns = load_bin_module("generate_recent_returns")
 SNAPSHOT_PATH = Path(__file__).parent / "golden" / "pipeline_snapshot.json"
 DATE_STR = "2026-01-01_0000"
 YEARS = [1, 2, 3]
+COMMON: dict[str, Any] = {"capital": TEST_CAPITAL, "skip_padding": TEST_SKIP_PADDING}
 MODEL_SPECS: list[tuple[str, dict[str, Any]]] = [
-    ("Model", {}),
-    ("KellyModel", {"bond_frac": 0.2, "rebalance_period": 90}),
-    ("InsuranceModel", {"insurance_frac": 0.1, "insurance_deductible": 0.09}),
-    ("InsuranceModel", {"insurance_frac": 0.05, "insurance_deductible": 0.18}),
+    ("Model", COMMON),
+    ("KellyModel", COMMON | {"bond_frac": 0.2, "rebalance_period": 90}),
+    (
+        "InsuranceModel",
+        COMMON
+        | INSURANCE_PARAMS
+        | {"insurance_frac": 0.1, "insurance_deductible": 0.09},
+    ),
+    (
+        "InsuranceModel",
+        COMMON
+        | INSURANCE_PARAMS
+        | {"insurance_frac": 0.05, "insurance_deductible": 0.18},
+    ),
 ]
 REL_TOL = 1e-9
 
@@ -81,9 +101,20 @@ def run_pipeline(root: Path) -> dict[str, Any]:
 
     returns_files = sorted(out_dir.glob("returns_*.csv"))
     for suffix in sorted({returns_file_suffix(p) for p in returns_files}):
-        create_summary_file(*get_model_run_outputs(out_dir, suffix, years=YEARS))
+        create_summary_file(
+            *get_model_run_outputs(out_dir, suffix, years=YEARS),
+            bins=config.backtest.histogram_bins,
+        )
+    run = RunManifest(
+        timestamp=DATE_STR,
+        model_version=MODEL_VERSION,
+        dataset="synthetic",
+        years=YEARS,
+        model_count=len(MODEL_SPECS),
+        model_names=runner.unique_model_names(MODEL_SPECS),
+    )
     report = generate_report.build_report_data(
-        generate_report.find_latest_files(out_dir), config.report.dist_years
+        run_summary_files(out_dir, run), config.report.dist_years
     )
 
     recent = json.loads(

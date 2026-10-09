@@ -37,16 +37,21 @@ only `gh-pages` carries them.
   compares against `tests/golden/pipeline_snapshot.json`. Refactors must not change it; for an
   intentional result change, regenerate with `UPDATE_GOLDEN=1 poetry run pytest
   tests/test_golden_master.py` in the same commit, **bump `MODEL_VERSION`** in
-  `returns/models.py`, and say why in the message. `summarize.py` only processes runs whose
-  `run_{timestamp}.json` manifest carries the current `MODEL_VERSION`, so old runs can't leak
-  into the report.
+  `returns/models.py`, and say why in the message. `summarize.py` and `generate_report.py`
+  only process runs whose `run_{timestamp}.json` manifest carries the current
+  `MODEL_VERSION`, and the report reads only the selected run's summaries
+  (`returns.data.run_summary_files`), so old runs can't leak into the report. `runner.py`
+  writes the manifest after all tasks succeed, so a crashed run is never selected.
 - **Test edge cases explicitly.** Known sharp edges in this codebase:
   - `calculate_mode` (`analysis.py`): `np.histogram` returns bin *edges* (one more than the
     counts); bin `i` spans `edges[i]..edges[i+1]`. The mode is that bin's centre. (Before
     2026-10-07 it used `edges[i-1]`, one bin low and wrapping at `i == 0`.)
-  - `model_name` mutation: `model_config()` must assign (`=`), never append (`+=`), or the
-    name accumulates across the ~5,800 calls made per full backtest run. Names are written to
-    output files and parsed back by `parse_model_name`; keep `format_*_name` and it in sync.
+  - Model names: `model_name` is a read-only property derived from the constructor
+    parameters (it once accumulated across the ~5,800 `model_config()` calls per run when a
+    `+=` crept in). Names are written to output files and parsed back by `parse_model_name`
+    (which raises `ModelNameError` on anything it can't parse); keep `format_*_name` and it
+    in sync. Floats are formatted losslessly (`repr`), and `runner.unique_model_names`
+    refuses a grid whose variants would share a name (and overwrite each other's files).
   - `InsuranceModel` insures the **stock, not the cash**: payout = `coverage_ratio ×
     insured_value × (|loss| − deductible)` into cash; premium = `premium_rate` × insured stock
     value per year, charged daily; at most one payout per policy period. Worked example
@@ -73,7 +78,14 @@ All calibration lives in `config.yaml`, validated by Pydantic models in `returns
 (unknown keys are errors; relative paths resolve against the config file's directory):
 `datasets`, `backtest` (stride, capital, year range, histogram bins), `models` (Kelly and
 Insurance grids and insurance parameters), `recent_returns`, `report`, `monthly_returns`,
-`sources`. Logging is configured from `logging.yaml` via `returns.logging_setup`.
+`sources` (incl. the Yahoo endpoint), `insurance_scan` (notebook scan grids). Logging is
+configured from `logging.yaml` via `returns.logging_setup`.
+
+**No calibration defaults in code.** Every config field is required, and model
+constructors, `model_tester`, `aggregate_returns`, `MonthlyReturns` etc. take their
+parameters explicitly — pass them from the loaded `AppConfig`. Tests use the pinned
+`SETTINGS_YAML` and the `make_buy_hold` / `make_kelly` / `make_insurance` factories in
+`tests/conftest.py`.
 
 ### Module layout
 

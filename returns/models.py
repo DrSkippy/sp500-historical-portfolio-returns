@@ -7,8 +7,9 @@ fed one ``PriceBar`` per trading day through ``trade``.
 import datetime
 import logging
 import math
-from typing import Any
+from enum import StrEnum
 
+from returns.errors import ModelNameError
 from returns.types import PriceBar, Trade, WindowReturn
 
 logger = logging.getLogger(__name__)
@@ -19,14 +20,22 @@ logger = logging.getLogger(__name__)
 MODEL_VERSION = 2
 
 DAYS_PER_YEAR = 365
-STRIDE_DAYS = 3  # stride for data sampling
-PADDING_TIME_DELTA = datetime.timedelta(
-    days=2 * STRIDE_DAYS
-)  # days to pad the jumps in the data
 
 BUY_HOLD_NAME = "Buy_Hold"
 KELLY_PREFIX = "Fractional_Kelly"
 INSURANCE_PREFIX = "Insurance"
+NAME_SEPARATOR = "_"
+
+ModelParams = dict[str, float | int]
+"""Model parameters recovered from a name, keyed as in the report JSON ``params``."""
+
+
+class ModelFamily(StrEnum):
+    """Strategy family; the value is the report JSON ``family`` (read by app.js)."""
+
+    BUY_HOLD = "buy_hold"
+    KELLY = "kelly"
+    INSURANCE = "insurance"
 
 
 def years_to_timedelta(years: float) -> datetime.timedelta:
@@ -43,25 +52,27 @@ class Model:
     """Buy & Hold: buy with all capital on the first day, sell on the last.
 
     Attributes:
-        model_name: Name written to output files; encodes the parameters for
-            subclasses (see ``parse_model_name``).
         stock_frac: Fraction of total capital held in stock.
     """
 
-    model_name = BUY_HOLD_NAME
     stock_frac = 1.0
 
     def __init__(
         self,
-        capital: float = 10000,
-        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
+        *,
+        capital: float,
+        skip_padding: datetime.timedelta,
     ) -> None:
         """Create an unconfigured model.
+
+        Calibration (capital, padding, strategy parameters) comes from config.yaml
+        via ``bin/runner.py``; there are no code defaults.
 
         Args:
             capital: Starting cash for every window.
             skip_padding: How far before a scheduled trade date to resume daily
-                processing when skipping ahead (must cover data gaps).
+                processing when skipping ahead (must cover data gaps; see
+                ``BacktestConfig.skip_padding``).
         """
         self.init_capital = capital
         self.skip_padding = skip_padding
@@ -74,6 +85,15 @@ class Model:
         self.last_trigger = True
         logger.info("Model initialized, but not configured")
 
+    @property
+    def model_name(self) -> str:
+        """Name written to output files; encodes the model's parameters.
+
+        Derived from the constructor parameters (which never change), so it is the
+        same on every call; see ``parse_model_name`` for the inverse.
+        """
+        return self._build_model_name()
+
     def _build_model_name(self) -> str:
         """Return the name for this model's parameters (constant for Buy & Hold)."""
         return BUY_HOLD_NAME
@@ -85,8 +105,8 @@ class Model:
             start_date: First day of the window.
             years: Window length in years.
         """
-        # assign, never append: model_config runs thousands of times per model
-        self.model_name = self._build_model_name()
+        # model_name is derived from the constructor parameters, so nothing here can
+        # make it accumulate across the thousands of model_config calls per model
         self.capital = self.init_capital
         self.shares = 0
         self.trades = []
@@ -249,10 +269,11 @@ class RebalancingModel(Model):
 
     def __init__(
         self,
-        capital: float = 10000,
-        stock_frac: float = 1.0,
-        rebalance_period_days: int = 90,
-        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
+        *,
+        capital: float,
+        stock_frac: float,
+        rebalance_period_days: int,
+        skip_padding: datetime.timedelta,
     ) -> None:
         """Create an unconfigured rebalancing model.
 
@@ -262,7 +283,7 @@ class RebalancingModel(Model):
             rebalance_period_days: Days between scheduled rebalances.
             skip_padding: See ``Model.__init__``.
         """
-        super().__init__(capital, skip_padding)
+        super().__init__(capital=capital, skip_padding=skip_padding)
         self.stock_frac = stock_frac
         self.rebalance_period = datetime.timedelta(days=rebalance_period_days)
         self.last_rebalance = self.start_date
@@ -310,14 +331,13 @@ class RebalancingModel(Model):
 class KellyModel(RebalancingModel):
     """Fractional Kelly: fixed stock/bond split, rebalanced every period."""
 
-    model_name = KELLY_PREFIX
-
     def __init__(
         self,
-        capital: float = 10000,
-        bond_frac: float = 0.4,
-        rebalance_period: int = 90,
-        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
+        *,
+        capital: float,
+        bond_frac: float,
+        rebalance_period: int,
+        skip_padding: datetime.timedelta,
     ) -> None:
         """Create an unconfigured Kelly model.
 
@@ -327,7 +347,12 @@ class KellyModel(RebalancingModel):
             rebalance_period: Days between rebalances.
             skip_padding: See ``Model.__init__``.
         """
-        super().__init__(capital, 1.0 - bond_frac, rebalance_period, skip_padding)
+        super().__init__(
+            capital=capital,
+            stock_frac=1.0 - bond_frac,
+            rebalance_period_days=rebalance_period,
+            skip_padding=skip_padding,
+        )
         self.init_bond_frac = bond_frac
         self.bond_frac = bond_frac
         self.init_rebalance_period_days = rebalance_period
@@ -372,18 +397,17 @@ class InsuranceModel(RebalancingModel):
     rebalance.
     """
 
-    model_name = INSURANCE_PREFIX
-
     def __init__(
         self,
-        capital: float = 10000,
-        insurance_frac: float = 0.10,
-        insurance_period: int = 90,
-        premium_rate: float = 0.012,
-        insurance_deductible: float = 0.15,
-        coverage_ratio: float = 1.0,
-        loss_window_days: int = 6,
-        skip_padding: datetime.timedelta = PADDING_TIME_DELTA,
+        *,
+        capital: float,
+        insurance_frac: float,
+        insurance_period: int,
+        premium_rate: float,
+        insurance_deductible: float,
+        coverage_ratio: float,
+        loss_window_days: int,
+        skip_padding: datetime.timedelta,
     ) -> None:
         """Create an unconfigured insurance model.
 
@@ -401,7 +425,12 @@ class InsuranceModel(RebalancingModel):
             loss_window_days: Number of trading days over which losses are measured.
             skip_padding: See ``Model.__init__``.
         """
-        super().__init__(capital, 1 - insurance_frac, insurance_period, skip_padding)
+        super().__init__(
+            capital=capital,
+            stock_frac=1 - insurance_frac,
+            rebalance_period_days=insurance_period,
+            skip_padding=skip_padding,
+        )
         self.init_insurance_frac = insurance_frac
         self.init_insurance_period = insurance_period
         self.init_insurance_deductible = insurance_deductible
@@ -525,17 +554,49 @@ class InsuranceModel(RebalancingModel):
         return None
 
 
+def _format_float(value: float) -> str:
+    """Shortest text that parses back to exactly ``value`` (``0.125`` -> "0.125").
+
+    Lossless, unlike a fixed precision: ``f"{0.125:.2}"`` is "0.12", which would give
+    two different variants the same name and output files.
+    """
+    return repr(float(value))
+
+
 def format_kelly_name(bond_frac: float, rebalance_days: int) -> str:
     """Return the KellyModel name, e.g. ``Fractional_Kelly_0.2_90``."""
-    return f"{KELLY_PREFIX}_{bond_frac:.2}_{rebalance_days}"
+    return NAME_SEPARATOR.join(
+        [KELLY_PREFIX, _format_float(bond_frac), str(rebalance_days)]
+    )
 
 
 def format_insurance_name(frac: float, deductible: float, period_days: int) -> str:
-    """Return the InsuranceModel name, e.g. ``Insurance_0.1_0.15_90``."""
-    return f"{INSURANCE_PREFIX}_{frac:.2}_{deductible:.2}_{period_days}"
+    """Return the InsuranceModel name, e.g. ``Insurance_0.1_0.15_90``.
+
+    Premium rate, coverage ratio and loss window are not in the name; they are
+    shared by every variant in a run and recorded in the run's manifest.
+    """
+    return NAME_SEPARATOR.join(
+        [
+            INSURANCE_PREFIX,
+            _format_float(frac),
+            _format_float(deductible),
+            str(period_days),
+        ]
+    )
 
 
-def parse_model_name(name: str) -> tuple[str, dict[str, Any]]:
+def _name_fields(name: str, prefix: str, count: int) -> list[str]:
+    """Split the parameter fields after ``prefix``, requiring exactly ``count``."""
+    fields = name.removeprefix(prefix + NAME_SEPARATOR).split(NAME_SEPARATOR)
+    if len(fields) != count:
+        raise ModelNameError(
+            f"{name!r}: expected {count} parameters after {prefix!r}, got {len(fields)}"
+        )
+    return fields
+
+
+def parse_model_name(name: str) -> tuple[ModelFamily, ModelParams]:
     """Recover the model family and parameters from a model name.
 
     The inverse of ``format_kelly_name`` / ``format_insurance_name``.
@@ -544,24 +605,30 @@ def parse_model_name(name: str) -> tuple[str, dict[str, Any]]:
         name: A model name as written to output files.
 
     Returns:
-        ``(family, params)`` where family is "buy_hold", "kelly", "insurance",
-        or "unknown" (with empty params).
+        ``(family, params)``; params are keyed as in the report JSON.
+
+    Raises:
+        ModelNameError: If the name is not one the ``format_*_name`` functions
+            produce.
     """
-    if name == BUY_HOLD_NAME:
-        return "buy_hold", {}
-    if name.startswith(f"{KELLY_PREFIX}_"):
-        # Fractional_Kelly_{bond_frac}_{rebalance}
-        parts = name.split("_")
-        return "kelly", {
-            "bond_frac": float(parts[2]),
-            "rebalance": int(parts[3]),
-        }
-    if name.startswith(f"{INSURANCE_PREFIX}_"):
-        # Insurance_{ins_frac}_{deductible}_{rebalance}
-        parts = name.split("_")
-        return "insurance", {
-            "ins_frac": float(parts[1]),
-            "deductible": float(parts[2]),
-            "rebalance": int(parts[3]),
-        }
-    return "unknown", {}
+    try:
+        if name == BUY_HOLD_NAME:
+            return ModelFamily.BUY_HOLD, {}
+        if name.startswith(KELLY_PREFIX + NAME_SEPARATOR):
+            # Fractional_Kelly_{bond_frac}_{rebalance}
+            bond_frac, rebalance = _name_fields(name, KELLY_PREFIX, 2)
+            return ModelFamily.KELLY, {
+                "bond_frac": float(bond_frac),
+                "rebalance": int(rebalance),
+            }
+        if name.startswith(INSURANCE_PREFIX + NAME_SEPARATOR):
+            # Insurance_{ins_frac}_{deductible}_{rebalance}
+            ins_frac, deductible, rebalance = _name_fields(name, INSURANCE_PREFIX, 3)
+            return ModelFamily.INSURANCE, {
+                "ins_frac": float(ins_frac),
+                "deductible": float(deductible),
+                "rebalance": int(rebalance),
+            }
+    except ValueError as e:
+        raise ModelNameError(f"{name!r}: bad parameter value ({e})") from e
+    raise ModelNameError(f"{name!r} is not a known model name")

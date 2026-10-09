@@ -9,15 +9,19 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from returns.analysis import (
-    HISTOGRAM_BINS,
     get_aggregate_returns_by_period,
     get_df_aggregate_returns_by_period,
 )
 from returns.config import AppConfig, DatasetConfig, load_config
-from returns.errors import MissingPriceColumnError, NoMatchingRunError
+from returns.errors import (
+    IncompleteRunError,
+    MissingPriceColumnError,
+    NoMatchingRunError,
+    NoModelOutputsError,
+)
 from returns.types import SUMMARY_COLUMNS
 
 logger = logging.getLogger(__name__)
@@ -206,7 +210,11 @@ def total_returns_path(summary_path: Path) -> Path:
 
 
 class RunManifest(BaseModel):
-    """What produced one backtest run; written by runner.py as ``run_{timestamp}.json``."""
+    """What produced one backtest run; written by runner.py as ``run_{timestamp}.json``.
+
+    runner.py writes it only after every task has succeeded, so a manifest marks a
+    complete run.
+    """
 
     timestamp: str
     """Run id, also the suffix of every output file name (``YYYY-MM-DD_HHMM``)."""
@@ -214,6 +222,11 @@ class RunManifest(BaseModel):
     dataset: str
     years: list[int]
     model_count: int
+    model_names: list[str] = Field(default_factory=list)
+    """Every model variant in the run (empty in manifests from before 2026-10-09)."""
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    """The ``backtest`` and ``models`` config the run used, including parameters
+    the model names don't encode (premium rate, coverage, loss window)."""
 
 
 def run_manifest_path(out_dir: Path, timestamp: str) -> Path:
@@ -271,8 +284,55 @@ def run_returns_files(out_dir: Path, timestamp: str) -> list[Path]:
     return sorted(out_dir.glob(f"returns_*_{timestamp}.csv"))
 
 
+def run_summary_files(out_dir: Path, run: RunManifest) -> dict[str, tuple[Path, Path]]:
+    """The summary CSV and total-returns JSON of every model in one run.
+
+    Only files carrying the run's timestamp are considered, so summaries left over
+    from other runs (e.g. a model since removed from the grid, or an older model
+    version) can never be mixed in.
+
+    Args:
+        out_dir: Dataset output directory.
+        run: The run, from ``select_run``.
+
+    Returns:
+        ``model_name -> (summary_path, total_returns_path)``.
+
+    Raises:
+        NoModelOutputsError: If the run has no summaries (summarize.py not run).
+        IncompleteRunError: If a summary lacks its JSON, or the models summarized
+            differ from those the manifest lists.
+    """
+    suffix = f"_{run.timestamp}.csv"
+    files: dict[str, tuple[Path, Path]] = {}
+    for summary_path in sorted(out_dir.glob(f"summary_*{suffix}")):
+        model_name = summary_path.name.removeprefix("summary_").removesuffix(suffix)
+        json_path = total_returns_path(summary_path)
+        if not json_path.exists():
+            raise IncompleteRunError(f"{summary_path} has no {json_path.name}")
+        files[model_name] = (summary_path, json_path)
+    if not files:
+        raise NoModelOutputsError(
+            f"No summaries for run {run.timestamp} in {out_dir}; run bin/summarize.py"
+        )
+    if run.model_names:
+        missing = sorted(set(run.model_names) - set(files))
+        unexpected = sorted(set(files) - set(run.model_names))
+        if missing or unexpected:
+            raise IncompleteRunError(
+                f"Run {run.timestamp} summaries don't match its manifest: "
+                f"missing {missing}, unexpected {unexpected}; re-run bin/summarize.py"
+            )
+    elif len(files) != run.model_count:
+        raise IncompleteRunError(
+            f"Run {run.timestamp} has {len(files)} summaries, expected "
+            f"{run.model_count}; re-run bin/summarize.py"
+        )
+    return files
+
+
 def get_model_run_outputs(
-    out_dir: Path, suffix: str, years: Iterable[int] = (1, 2, 3)
+    out_dir: Path, suffix: str, years: Iterable[int]
 ) -> tuple[dict[int, list[Row]], list[str] | None, Path]:
     """Read one model run's returns files for each window length.
 
@@ -312,7 +372,8 @@ def create_summary_file(
     results: dict[int, list[Row]],
     header: list[str] | None,
     filename: Path,
-    bins: int = HISTOGRAM_BINS,
+    *,
+    bins: int,
 ) -> tuple[Path, Path]:
     """Write a model run's summary CSV and total-returns JSON.
 
@@ -345,7 +406,8 @@ def create_summary_files(
     out_dir: Path,
     files: Iterable[Path],
     years: Iterable[int],
-    bins: int = HISTOGRAM_BINS,
+    *,
+    bins: int,
 ) -> list[tuple[Path, Path]]:
     """Summarize every model run found among the given returns files.
 

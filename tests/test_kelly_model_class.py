@@ -2,13 +2,13 @@ import unittest
 import datetime
 
 from returns.types import PriceBar
-from returns.models import PADDING_TIME_DELTA, InsuranceModel, KellyModel
+from tests.conftest import TEST_SKIP_PADDING, make_kelly
 
 
 class TestKellyModel(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.kelly_model = KellyModel()
+        self.kelly_model = make_kelly()
         self.kelly_model.model_config(datetime.datetime(2020, 1, 1), years=2)
 
     def test_init(self) -> None:
@@ -76,7 +76,7 @@ class TestKellyModel(unittest.TestCase):
             skip,
             datetime.datetime(2020, 1, 1)
             + datetime.timedelta(days=90)
-            - PADDING_TIME_DELTA,
+            - TEST_SKIP_PADDING,
         )
 
     def test_daily_trade_rebalance(self) -> None:

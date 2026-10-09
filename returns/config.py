@@ -1,9 +1,12 @@
 """Typed application configuration loaded from config.yaml.
 
-Relative paths in the file are resolved against the directory containing it, so
-scripts behave the same whatever directory they are run from.
+config.yaml is the single source of truth for calibration: every field is required
+(no code defaults that could silently drift from the file). Relative paths in the
+file are resolved against the directory containing it, so scripts behave the same
+whatever directory they are run from.
 """
 
+import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -38,46 +41,51 @@ class DatasetConfig(_Strict):
 class BacktestConfig(_Strict):
     """Backtest sampling and aggregation parameters."""
 
-    stride_days: int = 3
+    stride_days: int
     """Days between successive window start dates."""
-    padding_strides: int = 2
+    padding_strides: int
     """Skip-ahead padding before a scheduled trade, in strides."""
-    initial_capital: float = 10000
-    min_years: int = 1
-    max_years: int = 15
-    histogram_bins: int = 45
+    initial_capital: float
+    min_years: int
+    max_years: int
+    histogram_bins: int
 
     @property
     def years(self) -> range:
         """Window lengths (in years) to backtest, inclusive of max_years."""
         return range(self.min_years, self.max_years + 1)
 
+    @property
+    def skip_padding(self) -> datetime.timedelta:
+        """Skip-ahead padding implied by the stride: ``padding_strides`` strides."""
+        return datetime.timedelta(days=self.padding_strides * self.stride_days)
+
 
 class KellyGridConfig(_Strict):
     """Fractional-Kelly variants: the cross product of the two lists."""
 
-    bond_fracs: list[float] = [0.1, 0.2, 0.25, 0.15]
-    rebalance_days: list[int] = [90, 180]
+    bond_fracs: list[float]
+    rebalance_days: list[int]
 
 
 class InsuranceGridConfig(_Strict):
     """Insurance variants (cross product of fracs x deductibles) and shared parameters."""
 
-    fracs: list[float] = [0.05, 0.1]
-    deductibles: list[float] = [0.09, 0.12, 0.18]
-    period_days: int = 90
-    premium_rate: float = 0.012
+    fracs: list[float]
+    deductibles: list[float]
+    period_days: int
+    premium_rate: float
     """Annual premium as a fraction of the insured stock value."""
-    coverage_ratio: float = 1.0
+    coverage_ratio: float
     """Fraction of the loss beyond the deductible that the policy pays."""
-    loss_window_days: int = 6
+    loss_window_days: int
 
 
 class ModelsConfig(_Strict):
     """Model grid for the full backtest run."""
 
-    kelly: KellyGridConfig = KellyGridConfig()
-    insurance: InsuranceGridConfig = InsuranceGridConfig()
+    kelly: KellyGridConfig
+    insurance: InsuranceGridConfig
 
 
 class RecentPeriodConfig(_Strict):
@@ -93,46 +101,84 @@ class RecentPeriodConfig(_Strict):
 class RecentReturnsConfig(_Strict):
     """Horizons for bin/generate_recent_returns.py."""
 
-    periods: list[RecentPeriodConfig] = [
-        RecentPeriodConfig(name="daily", window=1, recent=30),
-        RecentPeriodConfig(name="weekly", window=5, recent=10),
-        RecentPeriodConfig(name="monthly", window=21, recent=4),
-    ]
+    periods: list[RecentPeriodConfig]
 
 
 class ReportConfig(_Strict):
     """Report site output."""
 
-    output_dir: Path = Path("trading_strategies_report/data")
-    dist_years: list[int] = [1, 5, 10, 15]
+    output_dir: Path
+    dist_years: list[int]
     """Window lengths whose full return distributions go into the report JSON."""
 
 
 class MonthlyReturnsConfig(_Strict):
     """bin/get_monthly_returns.py parameters."""
 
-    offset_days: int = 30
-    histogram_bins: int = 60
-    output_path: Path = Path("out_data/monthly_returns.csv")
+    offset_days: int
+    histogram_bins: int
+    output_path: Path
+    sample_count: int
+    """Number of random sample returns logged by the script."""
+
+
+class YahooConfig(_Strict):
+    """Yahoo Finance chart API used by bin/download_qqq.py."""
+
+    chart_url: str
+    """URL template with a ``{symbol}`` placeholder."""
+    period_end: int
+    """``period2`` epoch seconds; far in the future to fetch the full history."""
+    timeout_seconds: float
+    user_agent: str
 
 
 class SourcesConfig(_Strict):
     """External data sources."""
 
-    interest_path: Path = Path("data/interest.tab")
-    db_namespace: str = "NASDAQ"
+    interest_path: Path
+    db_namespace: str
+    yahoo: YahooConfig
+
+
+class FairPremiumConfig(_Strict):
+    """notebooks/insurance_scan/fair_premium.py scenario: one continuous policy."""
+
+    insurance_frac: float
+    premium_rate: float
+    coverage_ratio: float
+    deductibles: list[float]
+
+
+class ScreenGridConfig(_Strict):
+    """notebooks/insurance_scan/sweep.py ``screen`` grid (cross product)."""
+
+    insurance_frac: float
+    premium_rates: list[float]
+    deductibles: list[float]
+    coverage_ratios: list[float]
+
+
+class InsuranceScanConfig(_Strict):
+    """Insurance parameter scan (notebooks/insurance_scan, docs/insurance_parameter_scan.md)."""
+
+    horizons: list[int]
+    """Window lengths (years) compared in the scan."""
+    screen: ScreenGridConfig
+    fair_premium: FairPremiumConfig
 
 
 class AppConfig(_Strict):
     """Root of config.yaml."""
 
     datasets: dict[str, DatasetConfig]
-    backtest: BacktestConfig = BacktestConfig()
-    models: ModelsConfig = ModelsConfig()
-    recent_returns: RecentReturnsConfig = RecentReturnsConfig()
-    report: ReportConfig = ReportConfig()
-    monthly_returns: MonthlyReturnsConfig = MonthlyReturnsConfig()
-    sources: SourcesConfig = SourcesConfig()
+    backtest: BacktestConfig
+    models: ModelsConfig
+    recent_returns: RecentReturnsConfig
+    report: ReportConfig
+    monthly_returns: MonthlyReturnsConfig
+    sources: SourcesConfig
+    insurance_scan: InsuranceScanConfig
 
     def dataset(self, name: str) -> DatasetConfig:
         """Look up a dataset by name.

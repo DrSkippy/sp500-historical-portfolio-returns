@@ -21,16 +21,20 @@ from returns.data import (
     read_summary_data,
     returns_file_suffix,
     run_returns_files,
+    run_summary_files,
     select_run,
     write_run_manifest,
     total_returns_path,
 )
 from returns.errors import (
     DatasetConfigError,
+    IncompleteRunError,
     MissingPriceColumnError,
     NoMatchingRunError,
+    NoModelOutputsError,
 )
 from returns.types import RETURNS_CSV_HEADER, SUMMARY_COLUMNS
+from tests.conftest import SETTINGS_YAML
 
 PRICE_HEADER = "Date\tOpen\tHigh\tLow\tClose*\tAdj Close**\tVolume\n"
 
@@ -55,7 +59,8 @@ def interest_file(tmp_path: Path) -> Path:
 
 def write_config(tmp_path: Path, price_column: str = "Close*") -> Path:
     cfg = tmp_path / "config.yaml"
-    cfg.write_text(f"""datasets:
+    cfg.write_text(
+        f"""datasets:
   qqq:
     price_path: prices.tab
     combined_path: combined.csv
@@ -66,9 +71,11 @@ def write_config(tmp_path: Path, price_column: str = "Close*") -> Path:
     recent_source: file
     recent_symbol: QQQ
     recent_data: recent_qqq.json
-sources:
-  interest_path: interest.tab
-""")
+"""
+        + SETTINGS_YAML.replace(
+            "interest_path: ./data/interest.tab", "interest_path: interest.tab"
+        )
+    )
     return cfg
 
 
@@ -164,6 +171,7 @@ def write_returns(out_dir: Path, years: int, suffix: str, values: list[float]) -
 
 
 SUFFIX = "Buy_Hold_2026-01-01_0000.csv"
+BINS = 45
 VALUES = [0.10, -0.05, 0.20, -0.10, 0.15]
 
 
@@ -183,7 +191,7 @@ def test_create_summary_file_round_trips_through_read_summary_data(
     for years in (1, 2):
         write_returns(tmp_path, years, SUFFIX, VALUES)
     csv_path, json_path = create_summary_file(
-        *get_model_run_outputs(tmp_path, SUFFIX, [1, 2])
+        *get_model_run_outputs(tmp_path, SUFFIX, [1, 2]), bins=BINS
     )
     df, totals = read_summary_data(csv_path)
     assert list(df.columns) == SUMMARY_COLUMNS
@@ -200,7 +208,7 @@ def test_create_summary_files_one_summary_per_run(tmp_path: Path) -> None:
         for years in (1, 2)
         for suffix in (SUFFIX, other)
     ]
-    created = create_summary_files(tmp_path, files, [1, 2])
+    created = create_summary_files(tmp_path, files, [1, 2], bins=BINS)
     assert sorted(p.name for p, _ in created) == [
         f"summary_{SUFFIX}",
         f"summary_{other}",
@@ -213,7 +221,9 @@ def test_get_model_comparison_data_selects_the_requested_year(tmp_path: Path) ->
         for years in (1, 2):
             write_returns(tmp_path, years, name, [v * scale for v in VALUES])
         summaries.append(
-            create_summary_file(*get_model_run_outputs(tmp_path, name, [1, 2]))[0]
+            create_summary_file(
+                *get_model_run_outputs(tmp_path, name, [1, 2]), bins=BINS
+            )[0]
         )
     comparison = get_model_comparison_data(summaries, year=2)
     assert comparison["time_span"].tolist() == [2.0, 2.0]
@@ -255,3 +265,78 @@ def test_run_returns_files_only_returns_that_run(tmp_path: Path) -> None:
     keep = write_returns(tmp_path, 1, "Buy_Hold_2026-01-01_0000.csv", VALUES)
     write_returns(tmp_path, 1, "Buy_Hold_2026-02-01_0000.csv", VALUES)
     assert run_returns_files(tmp_path, "2026-01-01_0000") == [keep]
+
+
+def touch_summary(
+    out_dir: Path, model: str, stamp: str, with_json: bool = True
+) -> None:
+    (out_dir / f"summary_{model}_{stamp}.csv").touch()
+    if with_json:
+        (out_dir / f"total_returns_{model}_{stamp}.json").touch()
+
+
+RUN_STAMP = "2026-02-01_0000"
+
+
+def run_with(names: list[str], count: int | None = None) -> RunManifest:
+    return RunManifest(
+        timestamp=RUN_STAMP,
+        model_version=2,
+        dataset="qqq",
+        years=[1],
+        model_count=len(names) if count is None else count,
+        model_names=names if count is None else [],
+    )
+
+
+def test_run_summary_files_only_reads_the_run(tmp_path: Path) -> None:
+    for model in ("Buy_Hold", "Fractional_Kelly_0.2_90"):
+        touch_summary(tmp_path, model, RUN_STAMP)
+    # leftovers from other runs, including a model no longer in the grid
+    touch_summary(tmp_path, "Buy_Hold", "2026-03-01_0000")
+    touch_summary(tmp_path, "Insurance_0.1_0.15_90", "2026-01-01_0000")
+    (tmp_path / f"returns_1_Buy_Hold_{RUN_STAMP}.csv").touch()
+    files = run_summary_files(
+        tmp_path, run_with(["Buy_Hold", "Fractional_Kelly_0.2_90"])
+    )
+    assert sorted(files) == ["Buy_Hold", "Fractional_Kelly_0.2_90"]
+    summary, totals = files["Fractional_Kelly_0.2_90"]
+    assert summary.name == f"summary_Fractional_Kelly_0.2_90_{RUN_STAMP}.csv"
+    assert totals.name == f"total_returns_Fractional_Kelly_0.2_90_{RUN_STAMP}.json"
+
+
+def test_run_summary_files_without_summaries_raises(tmp_path: Path) -> None:
+    with pytest.raises(NoModelOutputsError, match="summarize"):
+        run_summary_files(tmp_path, run_with(["Buy_Hold"]))
+
+
+def test_run_summary_files_missing_json_raises(tmp_path: Path) -> None:
+    touch_summary(tmp_path, "Buy_Hold", RUN_STAMP, with_json=False)
+    with pytest.raises(IncompleteRunError, match="total_returns_Buy_Hold"):
+        run_summary_files(tmp_path, run_with(["Buy_Hold"]))
+
+
+def test_run_summary_files_checks_models_against_manifest(tmp_path: Path) -> None:
+    touch_summary(tmp_path, "Buy_Hold", RUN_STAMP)
+    touch_summary(tmp_path, "Mystery", RUN_STAMP)
+    with pytest.raises(
+        IncompleteRunError, match=r"missing \['Insurance_0.1_0.09_90'\]"
+    ):
+        run_summary_files(tmp_path, run_with(["Buy_Hold", "Insurance_0.1_0.09_90"]))
+
+
+def test_run_summary_files_old_manifest_checks_count(tmp_path: Path) -> None:
+    # manifests from before model_names existed only carry model_count
+    touch_summary(tmp_path, "Buy_Hold", RUN_STAMP)
+    assert list(run_summary_files(tmp_path, run_with([], count=1))) == ["Buy_Hold"]
+    with pytest.raises(IncompleteRunError, match="expected 2"):
+        run_summary_files(tmp_path, run_with([], count=2))
+
+
+def test_old_manifest_without_new_fields_still_loads(tmp_path: Path) -> None:
+    (tmp_path / "run_2026-01-01_0000.json").write_text(
+        '{"timestamp": "2026-01-01_0000", "model_version": 2, "dataset": "qqq",'
+        ' "years": [1], "model_count": 3}'
+    )
+    run = select_run(tmp_path, 2)
+    assert (run.model_names, run.parameters) == ([], {})

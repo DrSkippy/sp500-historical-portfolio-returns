@@ -10,10 +10,11 @@ import csv
 import datetime
 import logging
 import multiprocessing as mp
+from collections import Counter
 from pathlib import Path
 from typing import Any, Iterator
 
-from returns.config import AppConfig, BacktestConfig, load_config
+from returns.config import AppConfig, load_config
 from returns.data import (
     Row,
     RunManifest,
@@ -22,11 +23,10 @@ from returns.data import (
     returns_file_path,
     write_run_manifest,
 )
-from returns.errors import EmptyReturnsError
+from returns.errors import DuplicateModelNameError, EmptyReturnsError
 from returns.logging_setup import configure_logging
 from returns.models import (
     MODEL_VERSION,
-    STRIDE_DAYS,
     InsuranceModel,
     KellyModel,
     Model,
@@ -48,8 +48,9 @@ def model_tester(
     data: list[Row],
     price_index: int,
     interest_index: int,
-    years: int = 10,
-    stride_days: int = STRIDE_DAYS,
+    *,
+    years: int,
+    stride_days: int,
 ) -> list[WindowReturn]:
     """Backtest a model over every window of ``years`` length in the data.
 
@@ -105,16 +106,11 @@ def model_tester(
     return model_returns
 
 
-def skip_padding(backtest: BacktestConfig) -> datetime.timedelta:
-    """Skip-ahead padding implied by the backtest stride."""
-    return datetime.timedelta(days=backtest.padding_strides * backtest.stride_days)
-
-
 def all_model_specs(config: AppConfig) -> Iterator[tuple[str, dict[str, Any]]]:
     """Yield (class_name, kwargs) for every model variant in the configured grid."""
     common: dict[str, Any] = {
         "capital": config.backtest.initial_capital,
-        "skip_padding": skip_padding(config.backtest),
+        "skip_padding": config.backtest.skip_padding,
     }
     yield ("Model", common)
     kelly = config.models.kelly
@@ -139,6 +135,38 @@ def all_model_specs(config: AppConfig) -> Iterator[tuple[str, dict[str, Any]]]:
                     "loss_window_days": insurance.loss_window_days,
                 },
             )
+
+
+def unique_model_names(specs: list[tuple[str, dict[str, Any]]]) -> list[str]:
+    """Names of the model variants, checked to be distinct.
+
+    Output file names are built from model names, so two variants with the same
+    name would overwrite each other's results in the parallel run.
+
+    Args:
+        specs: ``(class_name, kwargs)`` pairs from ``all_model_specs``.
+
+    Returns:
+        One name per spec, in order.
+
+    Raises:
+        DuplicateModelNameError: If any two specs produce the same name.
+    """
+    names = [
+        MODEL_CLASSES[class_name](**kwargs).model_name for class_name, kwargs in specs
+    ]
+    duplicates = sorted(name for name, count in Counter(names).items() if count > 1)
+    if duplicates:
+        raise DuplicateModelNameError(
+            f"Model variants share names {duplicates}; check the models grid in "
+            "config.yaml for repeated values"
+        )
+    return names
+
+
+def new_run_timestamp() -> str:
+    """Run id for a run started now: ``YYYY-MM-DD_HHMM`` (sorts chronologically)."""
+    return datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
 
 
 def write_returns_csv(path: Path, rows: list[WindowReturn]) -> None:
@@ -204,8 +232,18 @@ def main() -> None:
     config = load_config()
     dataset = load_dataset(args.dataset, config)
     dataset.config.out_dir.mkdir(parents=True, exist_ok=True)
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
+    date_str = new_run_timestamp()
     specs = list(all_model_specs(config))
+    model_names = unique_model_names(specs)
+    tasks = [
+        (years, class_name, kwargs, date_str, args.dataset, config)
+        for years in config.backtest.years
+        for class_name, kwargs in specs
+    ]
+    with mp.Pool() as pool:
+        pool.starmap(model_test_worker, tasks)
+    # Written only once every task has succeeded: summarize.py selects runs by
+    # manifest, so a crashed or interrupted run is never picked up.
     write_run_manifest(
         dataset.config.out_dir,
         RunManifest(
@@ -214,15 +252,13 @@ def main() -> None:
             dataset=args.dataset,
             years=list(config.backtest.years),
             model_count=len(specs),
+            model_names=model_names,
+            parameters={
+                "backtest": config.backtest.model_dump(mode="json"),
+                "models": config.models.model_dump(mode="json"),
+            },
         ),
     )
-    tasks = [
-        (years, class_name, kwargs, date_str, args.dataset, config)
-        for years in config.backtest.years
-        for class_name, kwargs in specs
-    ]
-    with mp.Pool() as pool:
-        pool.starmap(model_test_worker, tasks)
     logger.info("All model testing completed")
 
 

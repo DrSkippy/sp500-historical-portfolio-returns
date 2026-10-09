@@ -5,14 +5,15 @@ from typing import Any, Callable
 
 import pytest
 
-from returns.models import STRIDE_DAYS, InsuranceModel, KellyModel, Model
+from returns.models import Model
 from returns.types import PriceBar
-from tests.conftest import load_bin_module
+from tests.conftest import load_bin_module, make_buy_hold, make_insurance, make_kelly
 
 runner = load_bin_module("runner")
 
 PRICE_IDX = 5
 INTEREST_IDX = 7
+STRIDE_DAYS = 3
 
 
 @pytest.fixture
@@ -48,15 +49,17 @@ def reference_tester(model: Model, data: list[list[Any]], years: int) -> list[An
 @pytest.mark.parametrize(
     "make_model",
     [
-        lambda: Model(),
-        lambda: KellyModel(bond_frac=0.2, rebalance_period=90),
-        lambda: InsuranceModel(insurance_frac=0.1, insurance_deductible=0.09),
+        lambda: make_buy_hold(),
+        lambda: make_kelly(bond_frac=0.2, rebalance_period=90),
+        lambda: make_insurance(insurance_frac=0.1, insurance_deductible=0.09),
     ],
 )
 def test_early_exit_matches_full_scan(
     data: list[list[Any]], make_model: Callable[[], Model]
 ) -> None:
-    got = runner.model_tester(make_model(), data, PRICE_IDX, INTEREST_IDX, years=1)
+    got = runner.model_tester(
+        make_model(), data, PRICE_IDX, INTEREST_IDX, years=1, stride_days=STRIDE_DAYS
+    )
     want = reference_tester(make_model(), data, years=1)
     assert len(got) > 100
     assert got == want
@@ -65,7 +68,7 @@ def test_early_exit_matches_full_scan(
 def test_stops_trading_after_window_end(
     data: list[list[Any]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    model = KellyModel(bond_frac=0.2, rebalance_period=90)
+    model = make_kelly(bond_frac=0.2, rebalance_period=90)
     calls_after_end: list[datetime.datetime] = []
     orig_trade = model.trade
 
@@ -77,6 +80,8 @@ def test_stops_trading_after_window_end(
         return orig_trade(date, price)
 
     monkeypatch.setattr(model, "trade", counting_trade)
-    rets = runner.model_tester(model, data, PRICE_IDX, INTEREST_IDX, years=1)
+    rets = runner.model_tester(
+        model, data, PRICE_IDX, INTEREST_IDX, years=1, stride_days=STRIDE_DAYS
+    )
     # exactly one post-window call per window: the one that makes the last trade
     assert len(calls_after_end) == len(rets)

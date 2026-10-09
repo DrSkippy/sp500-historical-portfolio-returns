@@ -47,8 +47,9 @@ PostgreSQL cluster (`192.168.1.91:5434`, table `quotes`).
 
 Everything the backtest is calibrated with lives in `config.yaml`, validated at load time by
 Pydantic models in `returns/config.py`: unknown keys and bad values are errors, and relative
-paths resolve against the directory holding `config.yaml`. Secrets never go there — database
-credentials come from `.envrc`. Logging is configured in `logging.yaml`.
+paths resolve against the directory holding `config.yaml`. Every section and field is
+required: there are no calibration defaults in code to drift from the file. Secrets never go
+there — database credentials come from `.envrc`. Logging is configured in `logging.yaml`.
 
 | Section | Contents |
 |---|---|
@@ -58,7 +59,8 @@ credentials come from `.envrc`. Logging is configured in `logging.yaml`.
 | `recent_returns` | Daily / weekly / monthly horizons for the recent-returns page |
 | `report` | Report output directory and the holding periods whose full distributions are published |
 | `monthly_returns` | Settings for `get_monthly_returns.py` |
-| `sources` | Interest-rate file and the PostgreSQL quotes namespace |
+| `sources` | Interest-rate file, the PostgreSQL quotes namespace, and the Yahoo Finance endpoint for `download_qqq.py` |
+| `insurance_scan` | Horizons and grids for the scripts in `notebooks/insurance_scan/` |
 
 ### Datasets
 
@@ -90,9 +92,11 @@ poetry run python bin/runner.py
 ```
 
 Dispatches 225 tasks via `multiprocessing.Pool`, one per (years, model) combination.
-Each worker loads data independently and writes a CSV to `./out_data/`. The run also writes a
-`run_{timestamp}.json` manifest recording the model version (`MODEL_VERSION` in
-`returns/models.py`) that produced it. Warnings go to
+Each worker loads data independently and writes a CSV to `./out_data/`. Once every task has
+succeeded, the run writes a `run_{timestamp}.json` manifest recording the model version
+(`MODEL_VERSION` in `returns/models.py`) that produced it, every model variant, and the
+`backtest`/`models` config used; a crashed run has no manifest and is never summarized. The
+runner refuses to start if two grid variants would share a model name. Warnings go to
 `app1.log`; pass `--log-level INFO` (or `DEBUG`) for a per-trade trace, but expect a very large
 log (tens to hundreds of GB for a full run). Insurance variants check for losses every trading
 day and dominate the runtime: a full S&P 500 run takes about 18 minutes on 24 cores, QQQ about 5.
@@ -115,12 +119,14 @@ per-model summary CSVs and JSON files in `./out_data/`, and rewrites the dataset
 Run after summarize.py to build the static report data file:
 
 ```bash
-poetry run python bin/generate_report.py
+poetry run python bin/generate_report.py [--run 2026-10-07_1550]
 ```
 
-Reads the dataset's `out_dir/summary_*.csv` and `out_dir/total_returns_*.json` files and writes
-`trading_strategies_report/data/report_data.json` (~8 MB). When several backtest runs are
-present, the newest timestamp per model wins, so old runs can stay in `out_data/`.
+Reads one run's `out_dir/summary_*.csv` and `out_dir/total_returns_*.json` files and writes
+`trading_strategies_report/data/report_data.json` (~8 MB). The run is chosen as for
+`summarize.py` (newest of the current model version, or `--run`); summaries from every other
+run are ignored, so old runs can stay in `out_data/` without leaking into the report. It
+stops with an error if the run's summaries don't cover exactly the models its manifest lists.
 
 ### Generate the recent-returns data
 
@@ -324,7 +330,7 @@ sp500-historical-portfolio-returns/
 - Used as the bond/cash return proxy in Kelly and Insurance models
 
 **Output files** (written to the dataset's `out_dir`: `./out_data/` or `./out_data/qqq/`):
-- `run_{timestamp}.json` — run manifest: model version, dataset, holding periods (`runner.py`)
+- `run_{timestamp}.json` — run manifest: model version, dataset, holding periods, model names and the `backtest`/`models` config, written when the run completes (`runner.py`)
 - `returns_{years}_{model_name}_{timestamp}.csv` — per-start-date results (`runner.py`)
 - `summary_{model_name}_{timestamp}.csv` — aggregated stats (mean, median, stdev, mode, fraction losing) (`summarize.py`)
 - `total_returns_{model_name}_{timestamp}.json` — full return distribution for histogram plots (`summarize.py`)
@@ -348,7 +354,7 @@ and keeps `ins_frac` as a cash reserve that earns the market interest rate and p
 premium. Both are rebalanced back to target every `insurance_period` days.
 
 - **Premium**: `premium_rate` per year of the insured stock value, charged daily from cash
-  (default 1.2%/yr, i.e. $1/month per $1,000 insured).
+  (configured at 1.2%/yr, i.e. $1/month per $1,000 insured).
 - **Trigger**: the price falls by at least `insurance_deductible` (tested values: 9%, 12%, 18%)
   over a rolling 6-day window (`loss_window_days`).
 - **Payout**: the loss beyond the deductible on the insured stock, paid into cash:

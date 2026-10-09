@@ -2,7 +2,9 @@ from typing import Any
 
 import pytest
 
-from returns.monthly_returns import OFFSET, MonthlyReturns
+from returns.monthly_returns import MonthlyReturns
+
+OFFSET = 30
 
 
 def _make_monthly_returns(
@@ -13,7 +15,7 @@ def _make_monthly_returns(
         prices = [float(i + 1) for i in range(n)]
     header = ["Date", "Open", "High", "Low", "Close", "Adj Close**", "Volume"]
     rows = [[None, None, None, None, None, p, None] for p in prices]
-    return MonthlyReturns(rows, header)
+    return MonthlyReturns(rows, header, price_column="Adj Close**", offset=OFFSET)
 
 
 class TestMonthlyReturns:
@@ -68,4 +70,4 @@ def test_write_and_plot(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     mr = _make_monthly_returns(60)
     mr.write_to_csv(str(tmp_path / "m.csv"))
     assert len((tmp_path / "m.csv").read_text().splitlines()) == 31
-    mr.plot_returns()
+    mr.plot_returns(bins=60)

@@ -9,10 +9,6 @@ from matplotlib import pyplot as plt
 
 logger = logging.getLogger(__name__)
 
-OFFSET = 30
-DEFAULT_PRICE_COLUMN = "Adj Close**"
-HISTOGRAM_BINS = 60
-
 
 class MonthlyReturns:
     """Distribution of returns over ``offset`` trading days.
@@ -24,16 +20,16 @@ class MonthlyReturns:
         self,
         daily_close: Sequence[Sequence[Any]],
         header: list[str],
-        price_column: str = DEFAULT_PRICE_COLUMN,
-        offset: int = OFFSET,
+        price_column: str,
+        offset: int,
     ) -> None:
         """Compute the rolling returns.
 
         Args:
             daily_close: Daily rows, oldest first.
             header: Column names for ``daily_close``.
-            price_column: Column holding the price.
-            offset: Lookback in rows (trading days).
+            price_column: Column holding the price (the dataset's ``price_column``).
+            offset: Lookback in rows (trading days; ``monthly_returns.offset_days``).
         """
         self.df = pd.DataFrame(daily_close, columns=header)
         prices = self.df[price_column]
@@ -74,8 +70,12 @@ class MonthlyReturns:
             ]
         )
 
-    def plot_returns(self, bins: int = HISTOGRAM_BINS) -> None:
-        """Show a histogram of the returns."""
+    def plot_returns(self, bins: int) -> None:
+        """Show a histogram of the returns.
+
+        Args:
+            bins: Number of histogram bins (``monthly_returns.histogram_bins``).
+        """
         plt.figure(figsize=(10, 5))
         plt.hist(
             self.returns.to_numpy(), bins=bins, label="Monthly Returns", color="blue"

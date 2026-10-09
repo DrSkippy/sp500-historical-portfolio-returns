@@ -2,13 +2,13 @@ import unittest
 import datetime
 
 from returns.types import PriceBar
-from returns.models import InsuranceModel, KellyModel
+from tests.conftest import make_insurance
 
 
 class TestInsuranceModel(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.insurance_model = InsuranceModel()
+        self.insurance_model = make_insurance()
         self.insurance_model.model_config(datetime.datetime(2020, 1, 1), years=2)
 
     def test_init(self) -> None:

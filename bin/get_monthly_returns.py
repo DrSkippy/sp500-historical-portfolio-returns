@@ -7,10 +7,12 @@ Usage:
 import argparse
 import logging
 
+from returns.cli import add_dataset_argument
 from returns.config import load_config
-from returns.data import get_combined_data, load_dataset
 from returns.logging_setup import configure_logging
 from returns.monthly_returns import MonthlyReturns
+from returns.plotting import plot_monthly_returns
+from returns.prices import get_combined_data, load_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +20,7 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     """Print sample returns and a summary, plot the distribution, write the CSV."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)"
-    )
+    add_dataset_argument(parser)
     parser.add_argument("--no-plot", action="store_true", help="skip the histogram")
     args = parser.parse_args()
     configure_logging("INFO", ["console"])
@@ -37,7 +37,7 @@ def main() -> None:
         logger.info(monthly.sample())
     logger.info(monthly.summary())
     if not args.no_plot:
-        monthly.plot_returns(settings.histogram_bins)
+        plot_monthly_returns(monthly, settings.histogram_bins)
     monthly.write_to_csv(str(settings.output_path))
 
 

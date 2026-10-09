@@ -5,7 +5,6 @@ from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
 
 logger = logging.getLogger(__name__)
 
@@ -69,20 +68,3 @@ class MonthlyReturns:
                 f"Maximum Return: {self.returns.max():.4f}",
             ]
         )
-
-    def plot_returns(self, bins: int) -> None:
-        """Show a histogram of the returns.
-
-        Args:
-            bins: Number of histogram bins (``monthly_returns.histogram_bins``).
-        """
-        plt.figure(figsize=(10, 5))
-        plt.hist(
-            self.returns.to_numpy(), bins=bins, label="Monthly Returns", color="blue"
-        )
-        plt.title("Monthly Returns Distribution")
-        plt.xlabel("Returns")
-        plt.ylabel("Frequency")
-        plt.legend()
-        plt.grid()
-        plt.show()

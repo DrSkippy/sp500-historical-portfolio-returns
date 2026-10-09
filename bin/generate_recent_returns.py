@@ -11,17 +11,20 @@ Usage:
 
 import argparse
 import datetime
-import json
 import logging
 from typing import Any, Sequence
 
 import numpy as np
 
+from returns.cli import add_dataset_argument
 from returns.config import AppConfig, RecentPeriodConfig, load_config
-from returns.data import Dataset, get_price_data, load_dataset
 from returns.db import get_db_settings, get_quotes
 from returns.errors import EmptyHistoryError
+from returns.finance import simple_return
+from returns.io_utils import write_compact_json
 from returns.logging_setup import configure_logging
+from returns.naming import ISO_DATE_FORMAT
+from returns.prices import Dataset, get_price_data, load_dataset
 from returns.types import Row
 
 logger = logging.getLogger(__name__)
@@ -32,14 +35,13 @@ PERCENTILES = (10, 25, 75, 90)
 
 def format_date(value: Any) -> str:
     """Format a date/datetime as YYYY-MM-DD; other values with str()."""
-    return value.strftime("%Y-%m-%d") if hasattr(value, "strftime") else str(value)
+    return value.strftime(ISO_DATE_FORMAT) if hasattr(value, "strftime") else str(value)
 
 
 def compute_returns(prices: Sequence[float], window: int) -> list[float]:
     """Compute rolling return: (close[i] - close[i-window]) / close[i-window]."""
     return [
-        (prices[i] - prices[i - window]) / prices[i - window]
-        for i in range(window, len(prices))
+        simple_return(prices[i - window], prices[i]) for i in range(window, len(prices))
     ]
 
 
@@ -108,7 +110,7 @@ def build_recent_entries(
 
     entries = []
     for idx in indices:
-        ret = (prices[idx] - prices[idx - window]) / prices[idx - window]
+        ret = simple_return(prices[idx - window], prices[idx])
         entries.append(
             {
                 "date": format_date(dates[idx]),
@@ -184,9 +186,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build recent returns data for the report site."
     )
-    parser.add_argument(
-        "--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)"
-    )
+    add_dataset_argument(parser)
     args = parser.parse_args()
     configure_logging("INFO", ["console"])
     config = load_config()
@@ -197,8 +197,7 @@ def main() -> None:
     output_dir = config.report.output_dir
     output_path = output_dir / dataset.config.recent_data
     output_dir.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w") as f:
-        json.dump(output, f, separators=(",", ":"))
+    write_compact_json(output_path, output)
     logger.info(f"Written: {output_path}")
     for period in config.recent_returns.periods:
         section = output[period.name]

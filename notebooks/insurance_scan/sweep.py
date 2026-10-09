@@ -29,7 +29,7 @@ from returns.backtest import (
     model_tester,
 )
 from returns.config import AppConfig, load_config
-from returns.data import get_combined_data, load_dataset
+from returns.prices import get_combined_data, load_dataset
 from returns.types import Row
 
 # Model family labels recorded as ``cls`` in the result JSON (read by analyze.py)

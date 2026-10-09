@@ -3,7 +3,7 @@
 By default fetches the ``qqq`` dataset's ``recent_symbol`` into its ``price_path``
 (data/QQQ.tab); the Yahoo endpoint and request settings are ``sources.yahoo`` in
 config.yaml. The output matches the SP500.tab layout (tab-separated, "Mon DD, YYYY"
-dates, newest first) so it can be read by returns.data.get_price_data():
+dates, newest first) so it can be read by returns.prices.get_price_data():
 
     Date  Open  High  Low  Close*  Adj Close**  Volume
 
@@ -24,8 +24,10 @@ from typing import Any
 
 import requests
 
+from returns.cli import add_dataset_argument
 from returns.config import YahooConfig, load_config
 from returns.errors import QuoteDownloadError
+from returns.naming import PRICE_DATE_FORMAT
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +91,7 @@ def chart_to_rows(chart: dict[str, Any]) -> list[list[str]]:
             ts + chart["meta"]["gmtoffset"], tz=datetime.timezone.utc
         )
         rows.append(
-            [date.strftime("%b %d, %Y")]
+            [date.strftime(PRICE_DATE_FORMAT)]
             + [f"{v:.4f}" for v in values]
             + [str(int(quote["volume"][i] or 0))]
         )
@@ -102,9 +104,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument(
-        "--dataset", default="qqq", help="dataset key from config.yaml to refresh"
-    )
+    add_dataset_argument(parser, default="qqq")
     parser.add_argument("--symbol", help="ticker (default: dataset recent_symbol)")
     parser.add_argument("--out", type=Path, help="output (default: dataset price_path)")
     args = parser.parse_args()

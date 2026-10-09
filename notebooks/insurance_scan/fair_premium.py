@@ -14,7 +14,7 @@ import datetime
 
 from returns.backtest import insurance_policy
 from returns.config import AppConfig, load_config
-from returns.data import get_combined_data, load_dataset
+from returns.prices import get_combined_data, load_dataset
 from returns.models import (
     DAYS_PER_YEAR,
     InsuranceModel,

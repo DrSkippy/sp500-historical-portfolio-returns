@@ -9,7 +9,7 @@ import pytest
 
 from returns.backtest import BuyHoldSpec
 from returns.config import AppConfig
-from returns.data import RunManifest, find_runs, write_run_manifest
+from returns.runs import RunManifest, find_runs, write_run_manifest
 from returns.errors import EmptyReturnsError
 from returns.models import MODEL_VERSION
 from tests.conftest import load_bin_module

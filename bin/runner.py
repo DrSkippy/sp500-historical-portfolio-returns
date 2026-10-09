@@ -6,7 +6,6 @@ Usage:
 
 import argparse
 import csv
-import datetime
 import logging
 import multiprocessing as mp
 from pathlib import Path
@@ -18,25 +17,17 @@ from returns.backtest import (
     model_tester,
     unique_model_names,
 )
+from returns.cli import add_dataset_argument
 from returns.config import AppConfig, load_config
-from returns.data import (
-    RunManifest,
-    get_combined_data,
-    load_dataset,
-    returns_file_path,
-    write_run_manifest,
-)
 from returns.errors import EmptyReturnsError
 from returns.logging_setup import configure_logging
 from returns.models import MODEL_VERSION
+from returns.naming import new_run_timestamp, returns_file_path, run_suffix
+from returns.prices import get_combined_data, load_dataset
+from returns.runs import RunManifest, write_run_manifest
 from returns.types import RETURNS_CSV_HEADER, WindowReturn
 
 logger = logging.getLogger(__name__)
-
-
-def new_run_timestamp() -> str:
-    """Run id for a run started now: ``YYYY-MM-DD_HHMM`` (sorts chronologically)."""
-    return datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
 
 
 def write_returns_csv(path: Path, rows: list[WindowReturn]) -> None:
@@ -85,7 +76,7 @@ def model_test_worker(
         )
 
     path = returns_file_path(
-        dataset.config.out_dir, years, f"{model.model_name}_{date_str}.csv"
+        dataset.config.out_dir, years, run_suffix(model.model_name, date_str)
     )
     logger.info(f"Writing results to {path}")
     write_returns_csv(path, results)
@@ -94,9 +85,7 @@ def model_test_worker(
 def main() -> None:
     """Parse arguments and run every task on a process pool."""
     parser = argparse.ArgumentParser(description="Run the full backtest grid.")
-    parser.add_argument(
-        "--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)"
-    )
+    add_dataset_argument(parser)
     parser.add_argument(
         "--log-level",
         default="WARNING",

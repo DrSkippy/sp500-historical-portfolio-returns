@@ -258,8 +258,15 @@ sp500-historical-portfolio-returns/
 │   ├── config.py              # Pydantic schema + loader for config.yaml
 │   ├── errors.py              # Package exceptions
 │   ├── logging_setup.py       # Logging from logging.yaml
-│   ├── data.py                # Data loading and combination
+│   ├── prices.py              # Price + interest loading and combination
+│   ├── runs.py                # Run manifests and each run's files
+│   ├── summaries.py           # Per-model summary CSV / total-returns JSON
+│   ├── naming.py              # Date formats and output file names
+│   ├── io_utils.py            # TSV reading, compact JSON writing
+│   ├── cli.py                 # Shared --dataset / --run options
+│   ├── finance.py             # Return arithmetic
 │   ├── analysis.py            # Aggregation and statistics
+│   ├── plotting.py            # Matplotlib plots (notebooks)
 │   ├── db.py                  # PostgreSQL access for recent quotes (PG* env vars)
 │   └── monthly_returns.py     # 30-day rolling return series
 ├── bin/

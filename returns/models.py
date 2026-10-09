@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from returns.errors import ModelNameError
+from returns.finance import simple_return
 from returns.types import PriceBar, Trade, WindowReturn
 
 logger = logging.getLogger(__name__)
@@ -553,7 +554,7 @@ class InsuranceModel(RebalancingModel):
             self.loss_window.append(price.price)
             return None
         start_price = self.loss_window.popleft()
-        loss_frac = (price.price - start_price) / start_price
+        loss_frac = simple_return(start_price, price.price)
         if not self.is_covered_loss(loss_frac):
             self.loss_window.append(price.price)
             return None

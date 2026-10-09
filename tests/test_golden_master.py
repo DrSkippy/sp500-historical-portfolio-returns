@@ -17,14 +17,10 @@ from typing import Any
 import pytest
 
 from returns.config import load_config
-from returns.data import (
-    RunManifest,
-    create_summary_file,
-    get_model_run_outputs,
-    load_dataset,
-    returns_file_suffix,
-    run_summary_files,
-)
+from returns.naming import returns_file_suffix, summary_file_path
+from returns.prices import load_dataset
+from returns.runs import RunManifest, run_summary_files
+from returns.summaries import create_summary_file, read_run_returns
 from returns.models import MODEL_VERSION
 from returns.backtest import (
     BuyHoldSpec,
@@ -90,7 +86,8 @@ def run_pipeline(root: Path) -> dict[str, Any]:
     returns_files = sorted(out_dir.glob("returns_*.csv"))
     for suffix in sorted({returns_file_suffix(p) for p in returns_files}):
         create_summary_file(
-            *get_model_run_outputs(out_dir, suffix, years=YEARS),
+            read_run_returns(out_dir, suffix, YEARS),
+            summary_file_path(out_dir, suffix),
             bins=config.backtest.histogram_bins,
         )
     run = RunManifest(

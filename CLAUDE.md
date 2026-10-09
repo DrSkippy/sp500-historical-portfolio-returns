@@ -40,7 +40,7 @@ only `gh-pages` carries them.
   `returns/models.py`, and say why in the message. `summarize.py` and `generate_report.py`
   only process runs whose `run_{timestamp}.json` manifest carries the current
   `MODEL_VERSION`, and the report reads only the selected run's summaries
-  (`returns.data.run_summary_files`), so old runs can't leak into the report. `runner.py`
+  (`returns.runs.run_summary_files`), so old runs can't leak into the report. `runner.py`
   writes the manifest after all tasks succeed, so a crashed run is never selected.
 - **Test edge cases explicitly.** Known sharp edges in this codebase:
   - `calculate_mode` (`analysis.py`): `np.histogram` returns bin *edges* (one more than the
@@ -96,12 +96,19 @@ returns/
                      #   InsuranceModel + InsurancePolicy; model-name format/parse, ModelFamily
   backtest.py        # ModelSpec (BuyHoldSpec/KellySpec/InsuranceSpec), all_model_specs,
                      #   unique_model_names, build_model, model_tester
-  types.py           # PriceBar, Trade, WindowReturn, ReturnStats (NamedTuples; CSV headers)
+  types.py           # PriceBar, Trade, WindowReturn, ReturnStats (NamedTuples; CSV headers), Row
   config.py          # Pydantic AppConfig + load_config (config.yaml)
   errors.py          # ReturnsError and subclasses
-  data.py            # I/O: load_dataset -> Dataset, get_price_data, get_interest_data, get_combined_data, summaries
+  prices.py          # load_dataset -> Dataset, get_price_data, get_interest_data, get_combined_data
+  runs.py            # RunManifest, write_run_manifest, select_run, run_returns_files, run_summary_files
+  summaries.py       # read_run_returns -> WindowReturn rows, create_summary_file(s), read_summary_data
+  naming.py          # Date formats and every output file name (returns_/summary_/total_returns_/run_)
+  io_utils.py        # read_tsv (file:line errors), write_compact_json, log_rows_read
+  cli.py             # add_dataset_argument / add_run_argument for bin/ scripts
+  finance.py         # simple_return
   db.py              # PostgreSQL access (get_db_settings, get_quotes); settings from .envrc PG* vars
   analysis.py        # aggregate_returns, calculate_mode, get_aggregate_returns_by_period
+  plotting.py        # matplotlib plots (kept out of analysis so pool workers never import pyplot)
   monthly_returns.py # MonthlyReturns (30-day rolling returns, formula: (cur-prior)/cur)
   logging_setup.py   # configure_logging from logging.yaml
 bin/

@@ -1,19 +1,13 @@
-"""Aggregate statistics and plots over backtest window returns."""
+"""Aggregate statistics over backtest window returns (plots are in returns.plotting)."""
 
 from typing import Any, Mapping, Sequence
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from matplotlib import pyplot as plt
 
 from returns.errors import EmptyReturnsError
-from returns.types import SUMMARY_COLUMNS, ReturnStats
-
-FRAC_RETURN_COLUMN = 1
-YEARLY_RETURN_COLUMN = 2
-TIME_SPAN_COLUMN = 3
-MODEL_NAME_COLUMN = 4
+from returns.types import SUMMARY_COLUMNS, ReturnStats, WindowReturn
 
 
 def calculate_mode(hist_data: tuple[npt.NDArray[Any], npt.NDArray[Any]]) -> float:
@@ -32,13 +26,13 @@ def calculate_mode(hist_data: tuple[npt.NDArray[Any], npt.NDArray[Any]]) -> floa
 
 
 def aggregate_returns(
-    returns_data: Sequence[Sequence[Any]], bins: int
+    returns_data: Sequence[WindowReturn], bins: int
 ) -> tuple[ReturnStats, list[float]]:
     """Summarize all backtest windows of one length for one model.
 
     Args:
-        returns_data: Rows of ``[date, frac_return, yearly_return_rate, time_span,
-            model_name]``; numeric fields may be strings (as read from CSV).
+        returns_data: Every window's result (from ``model_tester`` or
+            ``returns.summaries.read_run_returns``).
         bins: Number of histogram bins used to estimate the modes
             (``backtest.histogram_bins``).
 
@@ -51,17 +45,17 @@ def aggregate_returns(
     if not returns_data:
         raise EmptyReturnsError("No returns rows to aggregate")
 
-    total_returns = np.array([float(r[FRAC_RETURN_COLUMN]) for r in returns_data])
+    total_returns = np.array([float(r.frac_return) for r in returns_data])
     yearly_compounded_returns = np.array(
-        [float(r[YEARLY_RETURN_COLUMN]) for r in returns_data]
+        [float(r.yearly_return_rate) for r in returns_data]
     )
 
     fraction_losing_starts = np.count_nonzero(total_returns < 0.0) / len(total_returns)
 
     stats = ReturnStats(
         sample_size=len(returns_data),
-        time_span=round(float(returns_data[0][TIME_SPAN_COLUMN]), 0),
-        model_name=str(returns_data[0][MODEL_NAME_COLUMN]),
+        time_span=round(float(returns_data[0].time_span), 0),
+        model_name=str(returns_data[0].model_name),
         mean_total_returns=float(np.mean(total_returns)),
         mean_yearly_compound_returns=float(np.mean(yearly_compounded_returns)),
         median_total_returns=float(np.median(total_returns)),
@@ -106,7 +100,7 @@ def format_metrics(return_stats: ReturnStats) -> str:
 
 
 def get_aggregate_returns_by_period(
-    data: Mapping[Any, Sequence[Sequence[Any]]], bins: int
+    data: Mapping[Any, Sequence[WindowReturn]], bins: int
 ) -> tuple[list[ReturnStats], dict[Any, list[float]]]:
     """Aggregate each window length's returns.
 
@@ -132,42 +126,3 @@ def get_df_aggregate_returns_by_period(
     """Build the summary table, one row per window length, sorted by length."""
     df = pd.DataFrame(returns_stats_by_period, columns=SUMMARY_COLUMNS)
     return df.sort_values(by=["time_span"])
-
-
-def plot_df(
-    df: pd.DataFrame,
-    columns: list[str] | None = None,
-    df2: pd.DataFrame | None = None,
-) -> None:
-    """Plot summary columns against window length, optionally overlaying ``df2``."""
-    if columns is None:
-        columns = df.columns.to_list()[3:]
-    fig, axs = plt.subplots(nrows=len(columns), ncols=1)
-    fig.set_size_inches(8, 4 * len(columns))
-    for ax, column in zip(axs.reshape(-1), columns):
-        df.plot(x="time_span", y=column, ax=ax)
-        if df2 is not None:
-            df2.plot(x="time_span", y=column, ax=ax)
-        ax.set_ylabel(column.replace("_", " ").capitalize())
-        ax.set_xlabel("Period (Years)")
-
-
-def plot_histograms(total_returns_by_period: dict[Any, list[float]], bins: int) -> None:
-    """Plot one histogram of total returns per window length."""
-    fig, axs = plt.subplots(nrows=len(total_returns_by_period), ncols=1)
-    fig.set_size_inches(8, 4 * len(total_returns_by_period))
-    for ax, (period, values) in zip(axs.reshape(-1), total_returns_by_period.items()):
-        ax.hist(values, bins=bins)
-        ax.set_title(f"Sample Returns {period}")
-
-
-def plot_period_comparison_data(model_comparison: pd.DataFrame) -> None:
-    """Scatter key statistics by model for one window length."""
-    for column in [
-        "mean_total_returns",
-        "mean_yearly_compound_returns",
-        "median_total_returns",
-        "median_yearly_returns",
-        "fraction_losing_starts",
-    ]:
-        model_comparison.plot.scatter(column, "model_name")

@@ -23,16 +23,18 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from returns.cli import add_dataset_argument, add_run_argument
 from returns.config import load_config
-from returns.data import run_summary_files, select_run
 from returns.errors import (
     EmptyReturnsError,
     IncompleteRunError,
     NoMatchingRunError,
     NoModelOutputsError,
 )
+from returns.io_utils import write_compact_json
 from returns.logging_setup import configure_logging
 from returns.models import MODEL_VERSION, parse_model_name
+from returns.runs import run_summary_files, select_run
 
 logger = logging.getLogger(__name__)
 
@@ -132,13 +134,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build report_data.json for the report site."
     )
-    parser.add_argument(
-        "--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)"
-    )
-    parser.add_argument(
-        "--run",
-        help="run timestamp to report (default: newest for this model version)",
-    )
+    add_dataset_argument(parser)
+    add_run_argument(parser)
     args = parser.parse_args()
     configure_logging("INFO", ["console"])
     config = load_config()
@@ -164,8 +161,7 @@ def main() -> None:
     report = build_report_data(file_map, config.report.dist_years)
 
     logger.info(f"Writing {output_path}...")
-    with output_path.open("w") as f:
-        json.dump(report, f, separators=(",", ":"))
+    write_compact_json(output_path, report)
 
     size_mb = output_path.stat().st_size / BYTES_PER_MB
     logger.info(

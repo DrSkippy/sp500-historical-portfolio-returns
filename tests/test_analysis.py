@@ -1,6 +1,4 @@
 import datetime
-from typing import Any
-
 import numpy as np
 import pytest
 
@@ -10,14 +8,13 @@ from returns.analysis import (
     format_metrics,
     get_aggregate_returns_by_period,
     get_df_aggregate_returns_by_period,
-    plot_df,
-    plot_histograms,
-    plot_period_comparison_data,
 )
 from returns.errors import EmptyReturnsError
-from returns.types import SUMMARY_COLUMNS
+from returns.plotting import plot_df, plot_histograms, plot_period_comparison_data
+from returns.types import SUMMARY_COLUMNS, WindowReturn
 
 BINS = 45
+VALUES = [0.10, -0.05, 0.20, -0.10, 0.15]
 
 
 class TestCalculateMode:
@@ -44,18 +41,8 @@ class TestCalculateMode:
 
 
 class TestAggregateReturns:
-    def _make_returns(self, n: int = 5, time_span: float = 1.0) -> list[list[Any]]:
-        values = [0.10, -0.05, 0.20, -0.10, 0.15]
-        return [
-            [
-                datetime.datetime(2020, 1, i + 1),
-                values[i],
-                values[i],
-                time_span,
-                "Model",
-            ]
-            for i in range(n)
-        ]
+    def _make_returns(self) -> list[WindowReturn]:
+        return _rows(VALUES)
 
     def test_sample_size(self) -> None:
         stats, _ = aggregate_returns(self._make_returns(), BINS)
@@ -77,32 +64,19 @@ class TestAggregateReturns:
 
 
 class TestGetAggregateReturnsByPeriod:
-    def _make_period_data(self, n: int = 5, time_span: float = 1.0) -> list[list[Any]]:
-        values = [0.10, -0.05, 0.20, -0.10, 0.15]
-        return [
-            [
-                datetime.datetime(2020, 1, i + 1),
-                values[i],
-                values[i],
-                time_span,
-                "Model",
-            ]
-            for i in range(n)
-        ]
-
     def test_get_aggregate_returns_by_period(self) -> None:
         data = {
-            1: self._make_period_data(time_span=1.0),
-            2: self._make_period_data(time_span=2.0),
+            1: _rows(VALUES, years=1.0),
+            2: _rows(VALUES, years=2.0),
         }
         stats, totals = get_aggregate_returns_by_period(data, BINS)
         assert len(stats) == 2
         assert len(totals) == 2
 
 
-def _rows(values: list[float], years: float = 1.0) -> list[list[Any]]:
+def _rows(values: list[float], years: float = 1.0) -> list[WindowReturn]:
     return [
-        [datetime.datetime(2020, 1, i + 1), v, v / years, years, "Model"]
+        WindowReturn(datetime.datetime(2020, 1, i + 1), v, v / years, years, "Model")
         for i, v in enumerate(values)
     ]
 

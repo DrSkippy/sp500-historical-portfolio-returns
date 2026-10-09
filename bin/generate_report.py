@@ -23,16 +23,18 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from returns.cli import add_dataset_argument, add_run_argument
 from returns.config import load_config
-from returns.data import run_summary_files, select_run
 from returns.errors import (
     EmptyReturnsError,
     IncompleteRunError,
     NoMatchingRunError,
     NoModelOutputsError,
 )
+from returns.io_utils import write_compact_json
 from returns.logging_setup import configure_logging
 from returns.models import MODEL_VERSION, parse_model_name
+from returns.runs import run_summary_files, select_run
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +104,7 @@ def build_report_data(
     """Build the full report data structure.
 
     Args:
-        file_map: Output of ``returns.data.run_summary_files``.
+        file_map: Output of ``returns.runs.run_summary_files``.
         dist_years: Window lengths whose full distributions are included
             (``report.dist_years``).
 
@@ -132,13 +134,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build report_data.json for the report site."
     )
-    parser.add_argument(
-        "--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)"
-    )
-    parser.add_argument(
-        "--run",
-        help="run timestamp to report (default: newest for this model version)",
-    )
+    add_dataset_argument(parser)
+    add_run_argument(parser)
     args = parser.parse_args()
     configure_logging("INFO", ["console"])
     config = load_config()
@@ -152,24 +149,23 @@ def main() -> None:
     try:
         run = select_run(out_data, MODEL_VERSION, args.run)
         logger.info(
-            f"Reporting run {run.timestamp} (model version {run.model_version})"
+            "Reporting run %s (model version %s)", run.timestamp, run.model_version
         )
         file_map = run_summary_files(out_data, run)
     except (NoMatchingRunError, NoModelOutputsError, IncompleteRunError) as e:
         logger.error(e)
         sys.exit(1)
-    logger.info(f"Found {len(file_map)} model(s): {', '.join(sorted(file_map))}")
+    logger.info("Found %s model(s): %s", len(file_map), ", ".join(sorted(file_map)))
 
     logger.info("Building report data...")
     report = build_report_data(file_map, config.report.dist_years)
 
-    logger.info(f"Writing {output_path}...")
-    with output_path.open("w") as f:
-        json.dump(report, f, separators=(",", ":"))
+    logger.info("Writing %s...", output_path)
+    write_compact_json(output_path, report)
 
     size_mb = output_path.stat().st_size / BYTES_PER_MB
     logger.info(
-        f"Done. {output_path} ({size_mb:.1f} MB, {len(report['models'])} models)"
+        "Done. %s (%.1f MB, %d models)", output_path, size_mb, len(report["models"])
     )
 
 

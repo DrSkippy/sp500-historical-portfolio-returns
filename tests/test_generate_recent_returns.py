@@ -4,6 +4,7 @@ from typing import Sequence
 
 import pytest
 
+from returns.errors import EmptyHistoryError
 from tests.conftest import load_bin_module
 
 grr = load_bin_module("generate_recent_returns")
@@ -51,6 +52,11 @@ def test_compute_stats_empty() -> None:
 def test_compute_returns() -> None:
     assert grr.compute_returns([100, 110, 99], 1) == pytest.approx([0.1, -0.1])
     assert grr.compute_returns([100, 110, 99], 2) == pytest.approx([-0.01])
+
+
+def test_percentile_rank_without_history_raises() -> None:
+    with pytest.raises(EmptyHistoryError):
+        grr.percentile_rank([], 0.1)
 
 
 def test_percentile_rank_is_strictly_less() -> None:

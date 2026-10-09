@@ -5,35 +5,40 @@ from pathlib import Path
 import pytest
 
 from returns.config import load_config
-from returns.data import (
+from returns.naming import returns_file_suffix, summary_file_path, total_returns_path
+from returns.prices import (
     Dataset,
     create_combined_data_file,
-    create_summary_file,
-    create_summary_files,
     get_combined_data,
     get_interest_data,
-    get_model_comparison_data,
-    get_model_run_outputs,
     get_price_data,
     load_dataset,
     parse_number,
+)
+from returns.runs import (
     RunManifest,
-    read_summary_data,
-    returns_file_suffix,
     run_returns_files,
     run_summary_files,
     select_run,
     write_run_manifest,
-    total_returns_path,
+)
+from returns.summaries import (
+    create_summary_file,
+    create_summary_files,
+    get_model_comparison_data,
+    read_run_returns,
+    read_summary_data,
 )
 from returns.errors import (
+    DataFileFormatError,
     DatasetConfigError,
+    MissingInterestDataError,
     IncompleteRunError,
     MissingPriceColumnError,
     NoMatchingRunError,
     NoModelOutputsError,
 )
-from returns.types import RETURNS_CSV_HEADER, SUMMARY_COLUMNS
+from returns.types import RETURNS_CSV_HEADER, SUMMARY_COLUMNS, WindowReturn
 from tests.conftest import SETTINGS_YAML
 
 PRICE_HEADER = "Date\tOpen\tHigh\tLow\tClose*\tAdj Close**\tVolume\n"
@@ -143,6 +148,49 @@ def test_get_combined_data_uses_last_interest_year_for_later_rows(
     assert data[0][dataset.interest_index] == pytest.approx(0.04)
 
 
+def test_get_combined_data_missing_interest_year_raises(
+    tmp_path: Path, price_file: Path
+) -> None:
+    # prices are from 2020; rates start in 2021 (later years would reuse 2021's)
+    (tmp_path / "interest.tab").write_text("observation_date\tGS1\n2021-01-01\t4.0\n")
+    dataset = load_dataset("qqq", load_config(write_config(tmp_path)))
+    with pytest.raises(MissingInterestDataError, match=r"\[2020\]"):
+        get_combined_data(dataset)
+
+
+def test_get_combined_data_empty_interest_file_raises(
+    tmp_path: Path, price_file: Path
+) -> None:
+    (tmp_path / "interest.tab").write_text("observation_date\tGS1\n")
+    dataset = load_dataset("qqq", load_config(write_config(tmp_path)))
+    with pytest.raises(MissingInterestDataError, match="No interest rates"):
+        get_combined_data(dataset)
+
+
+def test_get_price_data_skips_blank_lines(tmp_path: Path) -> None:
+    path = tmp_path / "p.tab"
+    path.write_text(PRICE_HEADER + "Jan 01, 2020\t1\t1\t1\t1\t1\t1\n\n")
+    rows, _ = get_price_data(path)
+    assert len(rows) == 1
+
+
+@pytest.mark.parametrize(
+    "row", ["Jan 1st, 2020\t1\t1\t1\t1\t1\t1", "Jan 01, 2020\t1\tn/a\t1\t1\t1\t1"]
+)
+def test_get_price_data_bad_row_names_file_and_line(tmp_path: Path, row: str) -> None:
+    path = tmp_path / "p.tab"
+    path.write_text(PRICE_HEADER + "Jan 02, 2020\t1\t1\t1\t1\t1\t1\n" + row + "\n")
+    with pytest.raises(DataFileFormatError, match=r"p\.tab:3"):
+        get_price_data(path)
+
+
+def test_get_interest_data_bad_row_raises(tmp_path: Path) -> None:
+    path = tmp_path / "i.tab"
+    path.write_text("observation_date\tGS1\n2020-01-01\tN/A\n")
+    with pytest.raises(DataFileFormatError, match=r"i\.tab:2"):
+        get_interest_data(path)
+
+
 def test_create_combined_data_file_writes_dataset_path(
     tmp_path: Path, dataset: Dataset
 ) -> None:
@@ -175,14 +223,29 @@ BINS = 45
 VALUES = [0.10, -0.05, 0.20, -0.10, 0.15]
 
 
-def test_get_model_run_outputs_reads_each_year(tmp_path: Path) -> None:
+def test_read_run_returns_reads_each_year(tmp_path: Path) -> None:
     for years in (1, 2):
         write_returns(tmp_path, years, SUFFIX, VALUES)
-    results, header, summary_path = get_model_run_outputs(tmp_path, SUFFIX, [1, 2])
+    results = read_run_returns(tmp_path, SUFFIX, [1, 2])
     assert set(results) == {1, 2}
-    assert header == RETURNS_CSV_HEADER
-    assert results[1][0][0] == datetime.datetime(2020, 1, 1)
-    assert summary_path == tmp_path / f"summary_{SUFFIX}"
+    first = results[1][0]
+    assert first == WindowReturn(
+        datetime.datetime(2020, 1, 1), 0.10, 0.10, 1.0, "Buy_Hold"
+    )
+    assert summary_file_path(tmp_path, SUFFIX) == tmp_path / f"summary_{SUFFIX}"
+
+
+def test_read_run_returns_rejects_wrong_header(tmp_path: Path) -> None:
+    (tmp_path / f"returns_1_{SUFFIX}").write_text("a,b\n1,2\n")
+    with pytest.raises(DataFileFormatError, match="header"):
+        read_run_returns(tmp_path, SUFFIX, [1])
+
+
+def test_read_run_returns_bad_row_names_line(tmp_path: Path) -> None:
+    path = write_returns(tmp_path, 1, SUFFIX, VALUES)
+    path.write_text(path.read_text() + "2020-02-01 00:00:00,oops,0,1.0,Buy_Hold\n")
+    with pytest.raises(DataFileFormatError, match=":7:"):
+        read_run_returns(tmp_path, SUFFIX, [1])
 
 
 def test_create_summary_file_round_trips_through_read_summary_data(
@@ -191,7 +254,9 @@ def test_create_summary_file_round_trips_through_read_summary_data(
     for years in (1, 2):
         write_returns(tmp_path, years, SUFFIX, VALUES)
     csv_path, json_path = create_summary_file(
-        *get_model_run_outputs(tmp_path, SUFFIX, [1, 2]), bins=BINS
+        read_run_returns(tmp_path, SUFFIX, [1, 2]),
+        summary_file_path(tmp_path, SUFFIX),
+        bins=BINS,
     )
     df, totals = read_summary_data(csv_path)
     assert list(df.columns) == SUMMARY_COLUMNS
@@ -222,7 +287,9 @@ def test_get_model_comparison_data_selects_the_requested_year(tmp_path: Path) ->
             write_returns(tmp_path, years, name, [v * scale for v in VALUES])
         summaries.append(
             create_summary_file(
-                *get_model_run_outputs(tmp_path, name, [1, 2]), bins=BINS
+                read_run_returns(tmp_path, name, [1, 2]),
+                summary_file_path(tmp_path, name),
+                bins=BINS,
             )[0]
         )
     comparison = get_model_comparison_data(summaries, year=2)

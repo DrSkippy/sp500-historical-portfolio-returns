@@ -40,7 +40,10 @@ build-backend = "poetry.core.masonry.api"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["returns", "bin", "tests"]
+files = ["returns", "bin", "tests", "notebooks/insurance_scan"]
+
+[tool.coverage.report]
+fail_under = 90
 
 [tool.black]
 target-version = ["py312"]

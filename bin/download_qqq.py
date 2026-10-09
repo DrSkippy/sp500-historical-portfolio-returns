@@ -3,7 +3,7 @@
 By default fetches the ``qqq`` dataset's ``recent_symbol`` into its ``price_path``
 (data/QQQ.tab); the Yahoo endpoint and request settings are ``sources.yahoo`` in
 config.yaml. The output matches the SP500.tab layout (tab-separated, "Mon DD, YYYY"
-dates, newest first) so it can be read by returns.data.get_price_data():
+dates, newest first) so it can be read by returns.prices.get_price_data():
 
     Date  Open  High  Low  Close*  Adj Close**  Volume
 
@@ -24,7 +24,11 @@ from typing import Any
 
 import requests
 
+from returns.cli import add_dataset_argument
 from returns.config import YahooConfig, load_config
+from returns.errors import QuoteDownloadError
+from returns.logging_setup import configure_logging
+from returns.naming import PRICE_DATE_FORMAT
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,11 @@ def fetch_chart(symbol: str, yahoo: YahooConfig) -> dict[str, Any]:
 
     Returns:
         The chart ``result`` object.
+
+    Raises:
+        requests.HTTPError: If the request fails.
+        QuoteDownloadError: If the response carries no chart result (Yahoo
+            reports e.g. an unknown symbol as ``"result": null`` plus an error).
     """
     params: dict[str, str | int] = {
         "period1": 0,
@@ -54,7 +63,13 @@ def fetch_chart(symbol: str, yahoo: YahooConfig) -> dict[str, Any]:
         timeout=yahoo.timeout_seconds,
     )
     resp.raise_for_status()
-    result: dict[str, Any] = resp.json()["chart"]["result"][0]
+    chart = resp.json().get("chart") or {}
+    results = chart.get("result")
+    if not results:
+        raise QuoteDownloadError(
+            f"No chart data for {symbol!r}: {chart.get('error') or 'empty result'}"
+        )
+    result: dict[str, Any] = results[0]
     return result
 
 
@@ -77,7 +92,7 @@ def chart_to_rows(chart: dict[str, Any]) -> list[list[str]]:
             ts + chart["meta"]["gmtoffset"], tz=datetime.timezone.utc
         )
         rows.append(
-            [date.strftime("%b %d, %Y")]
+            [date.strftime(PRICE_DATE_FORMAT)]
             + [f"{v:.4f}" for v in values]
             + [str(int(quote["volume"][i] or 0))]
         )
@@ -90,26 +105,26 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument(
-        "--dataset", default="qqq", help="dataset key from config.yaml to refresh"
-    )
+    add_dataset_argument(parser, default="qqq")
     parser.add_argument("--symbol", help="ticker (default: dataset recent_symbol)")
     parser.add_argument("--out", type=Path, help="output (default: dataset price_path)")
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-    )
+    configure_logging("INFO", ["console"])
     config = load_config()
     dataset = config.dataset(args.dataset)
     symbol: str = args.symbol or dataset.recent_symbol
     out: Path = args.out or dataset.price_path
     rows = chart_to_rows(fetch_chart(symbol, config.sources.yahoo))
+    if not rows:
+        raise QuoteDownloadError(f"No complete trading days for {symbol!r}")
     with out.open("w") as f:
         f.write("\t".join(HEADER) + "\n")
         for row in rows:
             f.write("\t".join(row) + "\n")
-    logger.info(f"Wrote {len(rows)} rows ({rows[-1][0]} to {rows[0][0]}) to {out}")
+    logger.info(
+        "Wrote %s rows (%s to %s) to %s", len(rows), rows[-1][0], rows[0][0], out
+    )
 
 
 if __name__ == "__main__":

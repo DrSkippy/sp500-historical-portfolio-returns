@@ -10,10 +10,14 @@ Scripts live in `bin/`.
 ### Running tests and checks
 
 ```bash
-poetry run pytest --cov=returns --cov=bin --cov-report=term-missing tests/
+poetry run pytest --cov=returns --cov=bin --cov-report=term-missing tests/   # fails under 90%
 poetry run black --check .
-poetry run mypy            # strict; config in pyproject.toml covers returns/, bin/, tests/
+poetry run mypy            # strict; covers returns/, bin/, tests/, notebooks/insurance_scan/
 ```
+
+Coverage below 90% fails the run (`[tool.coverage.report] fail_under` in pyproject.toml).
+Log with %-style arguments (`logger.info("x = %s", x)`), never f-strings: the backtest calls
+the model loggers millions of times and f-strings format even when the level is off.
 
 Tests live in `tests/` (with an `s`). Use `poetry run python ...` — never bare `python`.
 Use explicit imports, not `from x import *` (strict mypy can't follow star imports).
@@ -40,7 +44,7 @@ only `gh-pages` carries them.
   `returns/models.py`, and say why in the message. `summarize.py` and `generate_report.py`
   only process runs whose `run_{timestamp}.json` manifest carries the current
   `MODEL_VERSION`, and the report reads only the selected run's summaries
-  (`returns.data.run_summary_files`), so old runs can't leak into the report. `runner.py`
+  (`returns.runs.run_summary_files`), so old runs can't leak into the report. `runner.py`
   writes the manifest after all tasks succeed, so a crashed run is never selected.
 - **Test edge cases explicitly.** Known sharp edges in this codebase:
   - `calculate_mode` (`analysis.py`): `np.histogram` returns bin *edges* (one more than the
@@ -68,9 +72,10 @@ only `gh-pages` carries them.
 - **Bisect for sorted data:** the daily price list is sorted by date. Use `bisect.bisect_left`
   to jump to the start of each test window instead of a linear scan with `continue`. Pre-compute
   `dates = [d[0] for d in data]` once outside the while loop.
-- When adding new strategies, register the class in `MODEL_CLASSES` and add its variants to
-  `all_model_specs()` in `runner.py` (grid values come from `models:` in `config.yaml`) — the
-  parallelism scales automatically.
+- When adding new strategies, add a model class (a `PortfolioModel` subclass) and a frozen
+  `*Spec` dataclass with a `build()` method in `returns/backtest.py`, add it to the
+  `ModelSpec` union and yield its variants from `all_model_specs()` (grid values come from
+  `models:` in `config.yaml`) — the parallelism scales automatically.
 
 ### Configuration
 
@@ -91,17 +96,27 @@ parameters explicitly — pass them from the loaded `AppConfig`. Tests use the p
 
 ```
 returns/
-  models.py          # Model, RebalancingModel, KellyModel, InsuranceModel; model-name format/parse
-  types.py           # PriceBar, Trade, WindowReturn, ReturnStats (NamedTuples; CSV headers)
+  models.py          # PortfolioModel (abstract), BuyHoldModel, RebalancingModel, KellyModel,
+                     #   InsuranceModel + InsurancePolicy; model-name format/parse, ModelFamily
+  backtest.py        # ModelSpec (BuyHoldSpec/KellySpec/InsuranceSpec), all_model_specs,
+                     #   unique_model_names, build_model, model_tester
+  types.py           # PriceBar, Trade, WindowReturn, ReturnStats (NamedTuples; CSV headers), Row
   config.py          # Pydantic AppConfig + load_config (config.yaml)
   errors.py          # ReturnsError and subclasses
-  data.py            # I/O: load_dataset -> Dataset, get_price_data, get_interest_data, get_combined_data, summaries
+  prices.py          # load_dataset -> Dataset, get_price_data, get_interest_data, get_combined_data
+  runs.py            # RunManifest, write_run_manifest, select_run, run_returns_files, run_summary_files
+  summaries.py       # read_run_returns -> WindowReturn rows, create_summary_file(s), read_summary_data
+  naming.py          # Date formats and every output file name (returns_/summary_/total_returns_/run_)
+  io_utils.py        # read_tsv (file:line errors), write_compact_json, log_rows_read
+  cli.py             # add_dataset_argument / add_run_argument for bin/ scripts
+  finance.py         # simple_return
   db.py              # PostgreSQL access (get_db_settings, get_quotes); settings from .envrc PG* vars
   analysis.py        # aggregate_returns, calculate_mode, get_aggregate_returns_by_period
+  plotting.py        # matplotlib plots (kept out of analysis so pool workers never import pyplot)
   monthly_returns.py # MonthlyReturns (30-day rolling returns, formula: (cur-prior)/cur)
   logging_setup.py   # configure_logging from logging.yaml
 bin/
-  runner.py                  # Backtest entry point; model_tester, model_test_worker, all_model_specs
+  runner.py                  # Backtest entry point: model_test_worker over all_model_specs x years
   summarize.py               # Aggregate backtest CSVs into summary_*.csv / total_returns_*.json
   generate_report.py         # Build trading_strategies_report/data/report_data*.json
   generate_recent_returns.py # Build recent_returns_data*.json (SPY from PostgreSQL, QQQ from file)

@@ -12,17 +12,14 @@ import argparse
 import logging
 import sys
 
+from returns.cli import add_dataset_argument, add_run_argument
 from returns.config import load_config
-from returns.data import (
-    create_combined_data_file,
-    create_summary_files,
-    load_dataset,
-    run_returns_files,
-    select_run,
-)
 from returns.errors import NoMatchingRunError
 from returns.logging_setup import configure_logging
 from returns.models import MODEL_VERSION
+from returns.prices import create_combined_data_file, load_dataset
+from returns.runs import run_returns_files, select_run
+from returns.summaries import create_summary_files
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +27,8 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     """Write the combined data file and one summary per model in the selected run."""
     parser = argparse.ArgumentParser(description="Summarize backtest output CSVs.")
-    parser.add_argument(
-        "--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)"
-    )
-    parser.add_argument(
-        "--run",
-        help="run timestamp to summarize (default: newest for this model version)",
-    )
+    add_dataset_argument(parser)
+    add_run_argument(parser)
     args = parser.parse_args()
     configure_logging("INFO", ["console"])
 
@@ -48,7 +40,9 @@ def main() -> None:
     except NoMatchingRunError as e:
         logger.error(e)
         sys.exit(1)
-    logger.info(f"Summarizing run {run.timestamp} (model version {run.model_version})")
+    logger.info(
+        "Summarizing run %s (model version %s)", run.timestamp, run.model_version
+    )
 
     create_combined_data_file(dataset)
     files_created = create_summary_files(
@@ -57,7 +51,7 @@ def main() -> None:
         run.years,
         bins=config.backtest.histogram_bins,
     )
-    logger.info(f"Wrote {len(files_created)} summaries to {out_dir}")
+    logger.info("Wrote %s summaries to %s", len(files_created), out_dir)
 
 
 if __name__ == "__main__":

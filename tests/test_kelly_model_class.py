@@ -13,8 +13,8 @@ class TestKellyModel(unittest.TestCase):
 
     def test_init(self) -> None:
         self.assertEqual(self.kelly_model.init_capital, 10000)
-        self.assertEqual(self.kelly_model.init_bond_frac, 0.4)
-        self.assertEqual(self.kelly_model.init_rebalance_period_days, 90)
+        self.assertEqual(self.kelly_model.bond_frac, 0.4)
+        self.assertEqual(self.kelly_model.rebalance_days, 90)
         self.assertEqual(self.kelly_model.stock_frac, 0.6)
         self.assertEqual(self.kelly_model.last_rebalance, datetime.datetime(2020, 1, 1))
 

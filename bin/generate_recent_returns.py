@@ -11,16 +11,21 @@ Usage:
 
 import argparse
 import datetime
-import json
 import logging
 from typing import Any, Sequence
 
 import numpy as np
 
+from returns.cli import add_dataset_argument
 from returns.config import AppConfig, RecentPeriodConfig, load_config
-from returns.data import Dataset, Row, get_price_data, load_dataset
 from returns.db import get_db_settings, get_quotes
+from returns.errors import EmptyHistoryError
+from returns.finance import simple_return
+from returns.io_utils import write_compact_json
 from returns.logging_setup import configure_logging
+from returns.naming import ISO_DATE_FORMAT
+from returns.prices import Dataset, get_price_data, load_dataset
+from returns.types import Row
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +35,13 @@ PERCENTILES = (10, 25, 75, 90)
 
 def format_date(value: Any) -> str:
     """Format a date/datetime as YYYY-MM-DD; other values with str()."""
-    return value.strftime("%Y-%m-%d") if hasattr(value, "strftime") else str(value)
+    return value.strftime(ISO_DATE_FORMAT) if hasattr(value, "strftime") else str(value)
 
 
 def compute_returns(prices: Sequence[float], window: int) -> list[float]:
     """Compute rolling return: (close[i] - close[i-window]) / close[i-window]."""
     return [
-        (prices[i] - prices[i - window]) / prices[i - window]
-        for i in range(window, len(prices))
+        simple_return(prices[i - window], prices[i]) for i in range(window, len(prices))
     ]
 
 
@@ -60,7 +64,13 @@ def compute_stats(values: Sequence[float]) -> dict[str, float]:
 
 
 def percentile_rank(hist_values: Sequence[float], recent_value: float) -> float:
-    """Fraction of historical values strictly less than recent_value, * 100."""
+    """Fraction of historical values strictly less than recent_value, * 100.
+
+    Raises:
+        EmptyHistoryError: If there are no historical values to rank against.
+    """
+    if not hist_values:
+        raise EmptyHistoryError("No historical returns to rank a recent return in")
     count = sum(1 for v in hist_values if v < recent_value)
     return count / len(hist_values) * 100.0
 
@@ -100,7 +110,7 @@ def build_recent_entries(
 
     entries = []
     for idx in indices:
-        ret = (prices[idx] - prices[idx - window]) / prices[idx - window]
+        ret = simple_return(prices[idx - window], prices[idx])
         entries.append(
             {
                 "date": format_date(dates[idx]),
@@ -119,7 +129,10 @@ def load_recent_quotes(
     if dataset.config.recent_source == "db":
         db = get_db_settings()
         logger.info(
-            f"Connecting to PostgreSQL at {db['host']}:{db['port']}/{db['dbname']}..."
+            "Connecting to PostgreSQL at %s:%s/%s...",
+            db["host"],
+            db["port"],
+            db["dbname"],
         )
         return list(get_quotes(symbol, config.sources.db_namespace))
     return [(row[0].date(), row[dataset.price_index]) for row in history]
@@ -144,17 +157,19 @@ def build_period_section(
 def build_output(dataset: Dataset, config: AppConfig) -> dict[str, Any]:
     """Assemble the full recent-returns JSON structure for a dataset."""
     # ── 1. Historical data ──────────────────────────────────────────────────
-    logger.info(f"Loading {dataset.config.price_path}...")
+    logger.info("Loading %s...", dataset.config.price_path)
     history, _ = get_price_data(dataset.config.price_path)
     hist_prices = [row[dataset.price_index] for row in history]
-    logger.info(f"  {len(hist_prices)} historical prices loaded")
+    logger.info("  %s historical prices loaded", len(hist_prices))
 
     # ── 2. Recent quotes ────────────────────────────────────────────────────
     recent_quotes = load_recent_quotes(dataset, history, config)
     latest = recent_quotes[-1] if recent_quotes else None
     logger.info(
-        f"  {len(recent_quotes)} {dataset.config.recent_symbol} rows loaded"
-        f" (latest: {latest[0] if latest else 'none'})"
+        "  %s %s rows loaded (latest: %s)",
+        len(recent_quotes),
+        dataset.config.recent_symbol,
+        latest[0] if latest else "none",
     )
 
     # ── 3. Assemble output ──────────────────────────────────────────────────
@@ -176,9 +191,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build recent returns data for the report site."
     )
-    parser.add_argument(
-        "--dataset", default="sp500", help="dataset key from config.yaml (sp500, qqq)"
-    )
+    add_dataset_argument(parser)
     args = parser.parse_args()
     configure_logging("INFO", ["console"])
     config = load_config()
@@ -189,13 +202,15 @@ def main() -> None:
     output_dir = config.report.output_dir
     output_path = output_dir / dataset.config.recent_data
     output_dir.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w") as f:
-        json.dump(output, f, separators=(",", ":"))
-    logger.info(f"Written: {output_path}")
+    write_compact_json(output_path, output)
+    logger.info("Written: %s", output_path)
     for period in config.recent_returns.periods:
         section = output[period.name]
         logger.info(
-            f"  {period.name} values: {len(section['values'])}, recent: {len(section['recent'])}"
+            "  %s values: %s, recent: %s",
+            period.name,
+            len(section["values"]),
+            len(section["recent"]),
         )
 
 

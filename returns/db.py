@@ -12,6 +12,8 @@ from typing import Any, Callable
 
 import psycopg
 
+from returns.errors import DatabaseConfigError
+
 DB_ENV_VARS = ("PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE")
 
 
@@ -22,17 +24,24 @@ def get_db_settings() -> dict[str, Any]:
         psycopg connection kwargs (host, port, user, password, dbname).
 
     Raises:
-        RuntimeError: If any required variable is unset; there are no defaults.
+        DatabaseConfigError: If any required variable is unset (there are no
+            defaults) or PGPORT is not an integer.
     """
     missing = [v for v in DB_ENV_VARS if not os.environ.get(v)]
     if missing:
-        raise RuntimeError(
+        raise DatabaseConfigError(
             f"Missing database environment variables: {', '.join(missing)}. "
             "Set them in .envrc (see .envrc.example) and run `direnv allow`."
         )
+    try:
+        port = int(os.environ["PGPORT"])
+    except ValueError:
+        raise DatabaseConfigError(
+            f"PGPORT must be an integer, got {os.environ['PGPORT']!r}"
+        ) from None
     return {
         "host": os.environ["PGHOST"],
-        "port": int(os.environ["PGPORT"]),
+        "port": port,
         "user": os.environ["PGUSER"],
         "password": os.environ["PGPASSWORD"],
         "dbname": os.environ["PGDATABASE"],

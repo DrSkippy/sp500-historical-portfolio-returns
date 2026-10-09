@@ -128,3 +128,20 @@ def test_new_window_resets_policy() -> None:
     feed(m, 1, [1000.0, 1000.0, 800.0])
     m.model_config(day(400), years=1)
     assert m.policy_active
+
+
+def test_payout_amount_matches_worked_example() -> None:
+    # 1 share insured at $1000, a 75% loss, 18% deductible: pays $570
+    m = make_model()
+    assert m.payout_amount(-0.75, 1000.0) == pytest.approx(570.0)
+    assert make_model(coverage_ratio=0.5).payout_amount(-0.75, 1000.0) == (
+        pytest.approx(285.0)
+    )
+
+
+def test_is_covered_loss_needs_active_policy_and_deductible() -> None:
+    m = make_model()
+    assert m.is_covered_loss(-0.18) and m.is_covered_loss(-0.5)
+    assert not m.is_covered_loss(-0.17)
+    m.policy_active = False
+    assert not m.is_covered_loss(-0.5)

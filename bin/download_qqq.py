@@ -27,6 +27,7 @@ import requests
 from returns.cli import add_dataset_argument
 from returns.config import YahooConfig, load_config
 from returns.errors import QuoteDownloadError
+from returns.logging_setup import configure_logging
 from returns.naming import PRICE_DATE_FORMAT
 
 logger = logging.getLogger(__name__)
@@ -109,9 +110,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, help="output (default: dataset price_path)")
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-    )
+    configure_logging("INFO", ["console"])
     config = load_config()
     dataset = config.dataset(args.dataset)
     symbol: str = args.symbol or dataset.recent_symbol

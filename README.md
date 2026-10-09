@@ -225,7 +225,8 @@ poetry run python bin/transform_new_sp500_records.py < new_rows.txt
 ```
 
 The script reads the pasted rows on stdin and prints them in `.tab` format; prepend the output
-to `data/SP500.tab` (newest rows go first).
+to `data/SP500.tab` (newest rows go first). An incomplete trailing record is skipped with a
+warning on stderr, so it never ends up in the output.
 
 ### Run the analysis on QQQ (Nasdaq-100)
 
@@ -294,6 +295,9 @@ sp500-historical-portfolio-returns/
 │   ├── test_data.py
 │   ├── test_db.py
 │   ├── test_download_qqq.py
+│   ├── test_insurance_scan.py # notebooks/insurance_scan kwargs <-> spec mapping
+│   ├── test_naming.py
+│   ├── test_transform_new_sp500_records.py
 │   ├── test_monthly_returns.py
 │   └── test_backtest.py       # model_tester early exit vs full scan; model specs
 ├── data/

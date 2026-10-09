@@ -10,10 +10,14 @@ Scripts live in `bin/`.
 ### Running tests and checks
 
 ```bash
-poetry run pytest --cov=returns --cov=bin --cov-report=term-missing tests/
+poetry run pytest --cov=returns --cov=bin --cov-report=term-missing tests/   # fails under 90%
 poetry run black --check .
-poetry run mypy            # strict; config in pyproject.toml covers returns/, bin/, tests/
+poetry run mypy            # strict; covers returns/, bin/, tests/, notebooks/insurance_scan/
 ```
+
+Coverage below 90% fails the run (`[tool.coverage.report] fail_under` in pyproject.toml).
+Log with %-style arguments (`logger.info("x = %s", x)`), never f-strings: the backtest calls
+the model loggers millions of times and f-strings format even when the level is off.
 
 Tests live in `tests/` (with an `s`). Use `poetry run python ...` — never bare `python`.
 Use explicit imports, not `from x import *` (strict mypy can't follow star imports).

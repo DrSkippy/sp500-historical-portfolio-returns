@@ -61,7 +61,7 @@ def read_run_returns(
     logger.info("Reading model run data")
     for year in years:
         filename = returns_file_path(out_dir, year, suffix)
-        logger.info(f"Reading {filename}")
+        logger.info("Reading %s", filename)
 
         with filename.open() as infile:
             reader = csv.reader(infile)
@@ -105,12 +105,12 @@ def create_summary_file(
     df = get_df_aggregate_returns_by_period(returns_stats_by_period)
 
     df.to_csv(filename, index=False)
-    logger.info(f"Summary data written to {filename}")
+    logger.info("Summary data written to %s", filename)
 
     json_filename = total_returns_path(filename)
     with json_filename.open("w") as outfile:
         json.dump(total_returns_by_period, outfile)
-    logger.info(f"Total returns data written to {json_filename}")
+    logger.info("Total returns data written to %s", json_filename)
     return filename, json_filename
 
 
@@ -137,11 +137,11 @@ def create_summary_files(
     suffixes = sorted({returns_file_suffix(Path(f)) for f in files})
     logger.info("Suffixes extracted from file names")
     for s in sorted({"_".join(x.split("_")[1:]) for x in suffixes}):
-        logger.info(f"  - {s}")
+        logger.info("  - %s", s)
     years = list(years)
     files_created = []
     for i, suffix in enumerate(suffixes):
-        logger.info(f"*** {i} of {len(suffixes)} *** {suffix}")
+        logger.info("*** %s of %s *** %s", i, len(suffixes), suffix)
         results = read_run_returns(out_dir, suffix, years)
         files_created.append(
             create_summary_file(results, summary_file_path(out_dir, suffix), bins=bins)

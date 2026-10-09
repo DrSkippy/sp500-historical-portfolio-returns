@@ -34,7 +34,7 @@ class MonthlyReturns:
         prices = self.df[price_column]
         self.returns = (prices - prices.shift(offset)) / prices
         self.returns = self.returns.dropna().reset_index(drop=True)
-        logger.info(f"Monthly returns initialized with {len(self.returns)} samples.")
+        logger.info("Monthly returns initialized with %s samples.", len(self.returns))
 
     def write_to_csv(self, filename: str) -> None:
         """Write the monthly returns to a CSV file.
@@ -43,7 +43,7 @@ class MonthlyReturns:
             filename: The name of the file to write the returns to.
         """
         self.returns.to_csv(filename, index=False)
-        logger.info(f"Monthly returns written to {filename}")
+        logger.info("Monthly returns written to %s", filename)
 
     def sample(self, rng: np.random.Generator | None = None) -> float:
         """Draw one return uniformly at random.

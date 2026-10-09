@@ -129,7 +129,10 @@ def load_recent_quotes(
     if dataset.config.recent_source == "db":
         db = get_db_settings()
         logger.info(
-            f"Connecting to PostgreSQL at {db['host']}:{db['port']}/{db['dbname']}..."
+            "Connecting to PostgreSQL at %s:%s/%s...",
+            db["host"],
+            db["port"],
+            db["dbname"],
         )
         return list(get_quotes(symbol, config.sources.db_namespace))
     return [(row[0].date(), row[dataset.price_index]) for row in history]
@@ -154,17 +157,19 @@ def build_period_section(
 def build_output(dataset: Dataset, config: AppConfig) -> dict[str, Any]:
     """Assemble the full recent-returns JSON structure for a dataset."""
     # ── 1. Historical data ──────────────────────────────────────────────────
-    logger.info(f"Loading {dataset.config.price_path}...")
+    logger.info("Loading %s...", dataset.config.price_path)
     history, _ = get_price_data(dataset.config.price_path)
     hist_prices = [row[dataset.price_index] for row in history]
-    logger.info(f"  {len(hist_prices)} historical prices loaded")
+    logger.info("  %s historical prices loaded", len(hist_prices))
 
     # ── 2. Recent quotes ────────────────────────────────────────────────────
     recent_quotes = load_recent_quotes(dataset, history, config)
     latest = recent_quotes[-1] if recent_quotes else None
     logger.info(
-        f"  {len(recent_quotes)} {dataset.config.recent_symbol} rows loaded"
-        f" (latest: {latest[0] if latest else 'none'})"
+        "  %s %s rows loaded (latest: %s)",
+        len(recent_quotes),
+        dataset.config.recent_symbol,
+        latest[0] if latest else "none",
     )
 
     # ── 3. Assemble output ──────────────────────────────────────────────────
@@ -198,11 +203,14 @@ def main() -> None:
     output_path = output_dir / dataset.config.recent_data
     output_dir.mkdir(parents=True, exist_ok=True)
     write_compact_json(output_path, output)
-    logger.info(f"Written: {output_path}")
+    logger.info("Written: %s", output_path)
     for period in config.recent_returns.periods:
         section = output[period.name]
         logger.info(
-            f"  {period.name} values: {len(section['values'])}, recent: {len(section['recent'])}"
+            "  %s values: %s, recent: %s",
+            period.name,
+            len(section["values"]),
+            len(section["recent"]),
         )
 
 

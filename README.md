@@ -97,7 +97,7 @@ succeeded, the run writes a `run_{timestamp}.json` manifest recording the model 
 (`MODEL_VERSION` in `returns/models.py`) that produced it, every model variant, and the
 `backtest`/`models` config used; a crashed run has no manifest and is never summarized. The
 runner refuses to start if two grid variants would share a model name. Warnings go to
-`app1.log`; pass `--log-level INFO` (or `DEBUG`) for a per-trade trace, but expect a very large
+`app1.log`; pass `--log-level DEBUG` for a per-trade trace, but expect a very large
 log (tens to hundreds of GB for a full run). Insurance variants check for losses every trading
 day and dominate the runtime: a full S&P 500 run takes about 18 minutes on 24 cores, QQQ about 5.
 

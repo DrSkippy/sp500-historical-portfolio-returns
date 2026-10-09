@@ -50,10 +50,10 @@ def read_tsv(
 
 def log_rows_read(kind: str, path: Path, row_count: int, header: Sequence[str]) -> None:
     """Log what a reader loaded (the same lines for every input file)."""
-    logger.info(f"Reading {kind} data")
-    logger.info(f"Path = {path}")
-    logger.info(f"Read {row_count} rows")
-    logger.info(f"Fields = {header}")
+    logger.info("Reading %s data", kind)
+    logger.info("Path = %s", path)
+    logger.info("Read %s rows", row_count)
+    logger.info("Fields = %s", header)
 
 
 def write_compact_json(path: Path, data: Any) -> None:

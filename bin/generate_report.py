@@ -149,23 +149,23 @@ def main() -> None:
     try:
         run = select_run(out_data, MODEL_VERSION, args.run)
         logger.info(
-            f"Reporting run {run.timestamp} (model version {run.model_version})"
+            "Reporting run %s (model version %s)", run.timestamp, run.model_version
         )
         file_map = run_summary_files(out_data, run)
     except (NoMatchingRunError, NoModelOutputsError, IncompleteRunError) as e:
         logger.error(e)
         sys.exit(1)
-    logger.info(f"Found {len(file_map)} model(s): {', '.join(sorted(file_map))}")
+    logger.info("Found %s model(s): %s", len(file_map), ", ".join(sorted(file_map)))
 
     logger.info("Building report data...")
     report = build_report_data(file_map, config.report.dist_years)
 
-    logger.info(f"Writing {output_path}...")
+    logger.info("Writing %s...", output_path)
     write_compact_json(output_path, report)
 
     size_mb = output_path.stat().st_size / BYTES_PER_MB
     logger.info(
-        f"Done. {output_path} ({size_mb:.1f} MB, {len(report['models'])} models)"
+        "Done. %s (%.1f MB, %d models)", output_path, size_mb, len(report["models"])
     )
 
 

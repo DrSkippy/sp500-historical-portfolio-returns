@@ -40,7 +40,9 @@ def main() -> None:
     except NoMatchingRunError as e:
         logger.error(e)
         sys.exit(1)
-    logger.info(f"Summarizing run {run.timestamp} (model version {run.model_version})")
+    logger.info(
+        "Summarizing run %s (model version %s)", run.timestamp, run.model_version
+    )
 
     create_combined_data_file(dataset)
     files_created = create_summary_files(
@@ -49,7 +51,7 @@ def main() -> None:
         run.years,
         bins=config.backtest.histogram_bins,
     )
-    logger.info(f"Wrote {len(files_created)} summaries to {out_dir}")
+    logger.info("Wrote %s summaries to %s", len(files_created), out_dir)
 
 
 if __name__ == "__main__":

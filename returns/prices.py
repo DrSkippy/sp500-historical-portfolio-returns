@@ -85,7 +85,7 @@ def load_dataset(name: str, config: AppConfig | None = None) -> Dataset:
         interest_path=config.sources.interest_path,
         price_header=tuple(read_header(dataset_config.price_path)),
     )
-    logger.info(f"Using dataset {name}: {dataset_config}")
+    logger.info("Using dataset %s: %s", name, dataset_config)
     return dataset
 
 

@@ -123,7 +123,9 @@ def main() -> None:
         f.write("\t".join(HEADER) + "\n")
         for row in rows:
             f.write("\t".join(row) + "\n")
-    logger.info(f"Wrote {len(rows)} rows ({rows[-1][0]} to {rows[0][0]}) to {out}")
+    logger.info(
+        "Wrote %s rows (%s to %s) to %s", len(rows), rows[-1][0], rows[0][0], out
+    )
 
 
 if __name__ == "__main__":

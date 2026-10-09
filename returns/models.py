@@ -90,7 +90,7 @@ class PortfolioModel(ABC):
         self.end_date = datetime.datetime.min
         self.first_trigger = True
         self.last_trigger = True
-        logger.info("Model initialized, but not configured")
+        logger.debug("Model initialized, but not configured")
 
     @property
     def model_name(self) -> str:
@@ -120,9 +120,9 @@ class PortfolioModel(ABC):
         #
         self.start_date = start_date
         self.end_date = start_date + years_to_timedelta(years)
-        logger.info(f"Model configured with starting capital = {self.capital}")
-        logger.info(f"Model configured start date = {start_date}")
-        logger.info(f"Model configured for {years} years")
+        logger.debug("Model configured with starting capital = %s", self.capital)
+        logger.debug("Model configured start date = %s", start_date)
+        logger.debug("Model configured for %s years", years)
         #
         self.first_trigger = True
         self.last_trigger = True
@@ -184,23 +184,23 @@ class PortfolioModel(ABC):
         skip_to_date = None
         if self.start_date <= date < self.end_date:
             # inside the trading window
-            logger.info(f"In trading window on {date}")
+            logger.debug("In trading window on %s", date)
             if self.first_trigger:
-                logger.info(f"First trade ({date})")
+                logger.debug("First trade (%s)", date)
                 self.first_trigger = False
                 self.first_trade(date, price)
             else:
                 # inside the trading window, but not first or last
                 skip_to_date = self.daily_trade(date, price)
         elif date >= self.end_date and self.last_trigger:
-            logger.info(f"Last trade ({date})")
+            logger.debug("Last trade (%s)", date)
             self.last_trigger = False
             self.last_trade(date, price)
         else:
             return skip_to_date
 
-        logger.info(
-            f"After trading on {date}: ${self.capital} and {self.shares} shares"
+        logger.debug(
+            "After trading on %s: $%s and %s shares", date, self.capital, self.shares
         )
         return skip_to_date
 
@@ -245,8 +245,10 @@ class PortfolioModel(ABC):
         # Ensure there are enough trades to calculate returns
         if len(self.trades) < 2 or self.init_capital <= 0:
             logger.warning(
-                f"{self.model_name} window starting {self.start_date} made "
-                f"{len(self.trades)} trade(s); reporting zero returns"
+                "%s window starting %s made %s trade(s); reporting zero returns",
+                self.model_name,
+                self.start_date,
+                len(self.trades),
             )
             return WindowReturn(self.start_date, 0, 0, 0, self.model_name)
 
@@ -319,8 +321,8 @@ class RebalancingModel(PortfolioModel):
 
     def _configure(self) -> None:
         self.last_rebalance = self.start_date
-        logger.info(
-            f"Model configured with re-balance period = {self.rebalance_period}"
+        logger.debug(
+            "Model configured with re-balance period = %s", self.rebalance_period
         )
 
     def _accrue_interest(self, date: datetime.datetime, rate: float) -> None:
@@ -345,7 +347,7 @@ class RebalancingModel(PortfolioModel):
             rate: Annual rate earned by cash since the last rebalance; defaults
                 to ``price.interest_rate``.
         """
-        logger.info(f"Trading to re-balance on {date}")
+        logger.debug("Trading to re-balance on %s", date)
         self._accrue_interest(date, price.interest_rate if rate is None else rate)
         # current stock value
         stock_value = self.shares * price.price
@@ -390,7 +392,7 @@ class KellyModel(RebalancingModel):
 
     def _configure(self) -> None:
         self.stock_frac = 1.0 - self.bond_frac
-        logger.info(f"Model configured with bond fraction = {self.bond_frac}")
+        logger.debug("Model configured with bond fraction = %s", self.bond_frac)
         super()._configure()
 
     def daily_trade(
@@ -489,14 +491,18 @@ class InsuranceModel(RebalancingModel):
         self.loss_window = deque()
         self.policy_active = True
         self.last_premium_date = self.start_date
-        logger.info(f"Model configured with insurance fraction = {self.insurance_frac}")
-        logger.info(f"Model configured with premium rate = {self.policy.premium_rate}")
-        logger.info(
-            f"Model configured with insurance deductible = {self.insurance_deductible}"
+        logger.debug(
+            "Model configured with insurance fraction = %s", self.insurance_frac
+        )
+        logger.debug(
+            "Model configured with premium rate = %s", self.policy.premium_rate
+        )
+        logger.debug(
+            "Model configured with insurance deductible = %s", self.insurance_deductible
         )
         super()._configure()
-        logger.info(
-            f"Model configured with coverage ratio = {self.policy.coverage_ratio}"
+        logger.debug(
+            "Model configured with coverage ratio = %s", self.policy.coverage_ratio
         )
 
     def _charge_premium(self, date: datetime.datetime, price: PriceBar) -> None:
@@ -579,12 +585,16 @@ class InsuranceModel(RebalancingModel):
         self.policy_active = False
         self._record_trade(date, price, 0)
         self.loss_window = deque([price.price])  # starting over
-        logger.info(
-            f"Insurance payout on {date} of {payout} on insured {self.shares * start_price}"
+        logger.debug(
+            "Insurance payout on %s of %s on insured %s",
+            date,
+            payout,
+            self.shares * start_price,
         )
-        logger.info(
-            f"Triggered by loss of {loss_frac} based on "
-            f"{self.policy.loss_window_days} days of history"
+        logger.debug(
+            "Triggered by loss of %s based on %s days of history",
+            loss_frac,
+            self.policy.loss_window_days,
         )
 
     def daily_trade(

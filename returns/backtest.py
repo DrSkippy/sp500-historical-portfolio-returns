@@ -199,14 +199,19 @@ def model_tester(
                 # last trade of this window is done; the rest of the data can't affect it
                 break
 
-        for log_line in model.status():
-            logger.debug(log_line)
+        # status() formats every trade, so only build it when tracing
+        if logger.isEnabledFor(logging.DEBUG):
+            for log_line in model.status():
+                logger.debug(log_line)
 
         result = model.total_returns()
         model_returns.append(result)
         logger.debug(
-            f"frac_returns={result.frac_return:5.2%} yearly_return_rate={result.yearly_return_rate}"
-            f" model={model.model_name} start_date={test_start_date}"
+            "frac_returns=%5.2f%% yearly_return_rate=%s model=%s start_date=%s",
+            result.frac_return * 100,
+            result.yearly_return_rate,
+            model.model_name,
+            test_start_date,
         )
         test_start_date += test_interval
 

@@ -78,7 +78,7 @@ def model_test_worker(
     path = returns_file_path(
         dataset.config.out_dir, years, run_suffix(model.model_name, date_str)
     )
-    logger.info(f"Writing results to {path}")
+    logger.info("Writing results to %s", path)
     write_returns_csv(path, results)
 
 
@@ -90,7 +90,7 @@ def main() -> None:
         "--log-level",
         default="WARNING",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="log level for app1.log (DEBUG/INFO log every trade and can reach 100s of GB)",
+        help="log level for app1.log (DEBUG logs every trade and can reach 100s of GB)",
     )
     args = parser.parse_args()
     configure_logging(args.log_level, ["file"])

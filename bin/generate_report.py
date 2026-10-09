@@ -104,7 +104,7 @@ def build_report_data(
     """Build the full report data structure.
 
     Args:
-        file_map: Output of ``returns.data.run_summary_files``.
+        file_map: Output of ``returns.runs.run_summary_files``.
         dist_years: Window lengths whose full distributions are included
             (``report.dist_years``).
 
